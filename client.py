@@ -4,8 +4,8 @@ import ipaddress
 import sys
 import rsa
 
-class Client:
 
+class Client:
     list_addresses = []
     public_key = 0
     private_key = 0
@@ -18,6 +18,7 @@ class Client:
 
     def init_keys(self):
         (self.public_key, self.private_key) = rsa.newkeys(1024)
+
     def send_encrypted_packet(self):
         """
         Add the path composed of IP addresses of at least 3 nodes and encrypt them with
@@ -25,25 +26,25 @@ class Client:
         :return:
         """
 
-    def encrypt_public_packet(self, packet, keys_list ) : # Probablement la même fonction qu'en dessous
+    def encrypt_public_packet(self, packet, keys_list):  # Probablement la même fonction qu'en dessous
         """
         Encrypts packet with the public keys of the nodes contained in the list
         :return:
         """
 
-    def decrypt_public_packet(self, packet, keys_list ) :
+    def decrypt_public_packet(self, packet, keys_list):
         """
         Decrypts received packet with the public keys of the nodes contained in the list
         :return:
         """
 
-    def decrypt_private_packet(self, packet) : # Probablement la même fonction qu'en dessous
+    def decrypt_private_packet(self, packet):  # Probablement la même fonction qu'en dessous
         """
         Decrypts received packet with the private key
         :return:
         """
 
-    def encrypt_private_packet(self) :
+    def encrypt_private_packet(self):
         """
         Encrypts packet with the private key
         :return:
@@ -60,6 +61,7 @@ class Client:
         Request a subset of IP addresses to a node already in the network
         :return:
         """
+
     def init_node_as_relay(self):
         """
         Handshake between node and TOR server to decide on the relay IP address
@@ -83,8 +85,3 @@ if __name__ == '__main__':
     node = Client("127.0.0.8", 4000, "127.0.0.1", 4000)
     node.init_keys()
     node.init_node_as_relay()
-
-
-
-
-
