@@ -67,10 +67,11 @@ class Node:
         """
 
     def start_listener(self):
-        listener = threading.Thread(target=self.listener())
+        listener = threading.Thread(target=self.listener)
         listener.start()
+
     def listener(self):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock :
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
             sock.bind((self.my_address, self.my_port))
             sock.listen()
             while True:
@@ -81,13 +82,12 @@ class Node:
                     print(f"Message received : {message}\n"
                           f"From : ({address[0]}, {address[1]})")
                     print(message)
-                    #if type(message) is rsa.PublicKey:
-                    msg_to_node = pickle.dumps(self.dict_addresses)
-                    connection.send(msg_to_node)
-                    node_address = (address[0], address[1], message, False)
-                    self.dict_addresses[(address[0], address[1])] = (message, False)
-                    print(self.dict_addresses)
-
+                    if type(message) is rsa.PublicKey:
+                        msg_to_node = pickle.dumps(self.dict_addresses)
+                        connection.send(msg_to_node)
+                        node_address = (address[0], address[1], message, False)
+                        self.dict_addresses[(address[0], address[1])] = (message, False)
+                        print(self.dict_addresses)
 
     def init_node_as_relay(self):
         """
@@ -96,7 +96,7 @@ class Node:
         :return:
         """
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            sock.bind((self.my_address, self.my_port))
+            sock.bind((self.my_address, self.my_port+1))
             sock.connect((self.tor_host, self.tor_port))
             self.init_keys()
             key = pickle.dumps(self.public_key)
