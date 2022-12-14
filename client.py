@@ -4,17 +4,19 @@ import ipaddress
 import sys
 import rsa
 
+starting_nodes = [("127.0.0.1", 4001), ("127.0.0.1", 4002), ("127.0.0.1", 4003), ("127.0.0.1", 4004)]
+
 
 class Node:
     list_addresses = []
     public_key = 0
     private_key = 0
 
-    def __init__(self, my_address, my_port, server_address):
+    def __init__(self, own_address, server_address):
         self.tor_host = server_address[0]
         self.tor_port = server_address[1]
-        self.my_address = my_address
-        self.my_port = my_port
+        self.my_address = own_address[0]
+        self.my_port = own_address[1]
 
     def init_keys(self):
         (self.public_key, self.private_key) = rsa.newkeys(1024)
