@@ -12,7 +12,6 @@ def start_network():
     """
     west_node = client.Node(starting_nodes[0], tor_network_address)
     west_node.start_listener()
-    print("lol")
     west_node.init_node_as_relay()
 
     # north_node = client.Node(starting_nodes[1], starting_nodes[0])

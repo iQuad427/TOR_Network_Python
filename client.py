@@ -1,4 +1,5 @@
 import pickle
+import random
 import socket
 import ipaddress
 import sys
@@ -6,22 +7,64 @@ import threading
 
 import rsa
 
-starting_nodes = [("127.0.0.1", 4001), ("127.0.0.1", 4002), ("127.0.0.1", 4003), ("127.0.0.1", 4004)]
+
+starting_phonebook = {
+    ("127.0.0.1", 4000): ("tor_server", False),
+    ("127.0.0.1", 4001): ("west_node", False),
+    ("127.0.0.1", 4002): ("north_node", False),
+    ("127.0.0.1", 4003): ("east_node", False),
+    ("127.0.0.1", 4004): ("south_node", False),
+}
 
 
 class Node:
-    dict_addresses = {}
-    public_key = 0
-    private_key = 0
-
     def __init__(self, own_address, server_address):
         self.tor_host = server_address[0]
         self.tor_port = server_address[1]
         self.my_address = own_address[0]
         self.my_port = own_address[1]
+        self.phonebook = starting_phonebook
+        self.path = []
+        self.public_key = 0
+        self.private_key = 0
 
     def init_keys(self):
+        # TODO : Check if keys are already set, else do whatever bro, idk
         (self.public_key, self.private_key) = rsa.newkeys(1024)
+
+    def update_phonebook(self, address):
+        if address not in self.phonebook:
+            raise PermissionError("Node not in phonebook")
+
+        print(f"Previous phonebook : {self.phonebook}")
+
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.bind((self.my_address, self.my_port))
+            sock.connect((address[0], address[1]))
+
+            sock.send(pickle.dumps("phonebook"))
+            new_phonebook = sock.recv(2048)
+            new_phonebook = pickle.loads(new_phonebook)
+
+            for entry in new_phonebook:
+                # add new address only if it was not already in our phonebook,
+                # no modification of the previous addresses
+                if entry not in self.phonebook:
+                    self.phonebook[entry] = new_phonebook[entry]
+
+            print(f"New phonebook : {self.phonebook}")
+
+    def reset_phonebook(self):
+        self.phonebook = starting_phonebook
+
+    def define_path(self):
+        list_of_node = [self.phonebook[entry] for entry in self.phonebook]
+        random.shuffle(list_of_node)
+        while len(list_of_node) > 3:
+            index = random.randrange(0, len(list_of_node), 1)
+            list_of_node.pop(index)
+
+        self.path = list_of_node
 
     def send_encrypted_packet(self):
         """
@@ -54,7 +97,7 @@ class Node:
         :return:
         """
 
-    def forward_packet(self, packet, IP_address):
+    def forward_packet(self, packet, ip_address):
         """
         Send the packet to the corresponding IP address
         :return:
@@ -79,15 +122,14 @@ class Node:
                 with connection:
                     message = connection.recv(2048)
                     message = pickle.loads(message)
-                    print(f"Message received : {message}\n"
-                          f"From : ({address[0]}, {address[1]})")
-                    print(message)
-                    if type(message) is rsa.PublicKey:
-                        msg_to_node = pickle.dumps(self.dict_addresses)
+                    if message == "phonebook":
+                        connection.send(pickle.dumps(self.phonebook))
+                    elif type(message) is rsa.PublicKey:
+                        msg_to_node = pickle.dumps(self.phonebook)
                         connection.send(msg_to_node)
                         node_address = (address[0], address[1], message, False)
-                        self.dict_addresses[(address[0], address[1])] = (message, False)
-                        print(self.dict_addresses)
+                        self.phonebook[(address[0], address[1])] = (message, False)
+                        print(self.phonebook)
 
     def init_node_as_relay(self):
         """
