@@ -10,6 +10,7 @@ port = 4000
 # Each tuple of address is compose of (IP address, port number, is_exit_node)
 init_addresses = [("127.0.0.2", 4000, False), ("127.0.0.3", 4000, False), ("127.0.0.4", 4000, True)]
 
+
 if __name__ == '__main__':
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as socket:
         socket.bind((host, port))

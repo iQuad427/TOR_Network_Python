@@ -5,14 +5,14 @@ import sys
 import rsa
 
 
-class Client:
+class Node:
     list_addresses = []
     public_key = 0
     private_key = 0
 
-    def __init__(self, my_address, my_port, server_host, server_port):
-        self.tor_host = server_host
-        self.tor_port = server_port
+    def __init__(self, my_address, my_port, server_address):
+        self.tor_host = server_address[0]
+        self.tor_port = server_address[1]
         self.my_address = my_address
         self.my_port = my_port
 
@@ -71,6 +71,7 @@ class Client:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
             sock.bind((self.my_address, self.my_port))
             sock.connect((self.tor_host, self.tor_port))
+            self.init_keys()
             key = pickle.dumps(self.public_key)
             message = key
             sock.send(message)
@@ -79,9 +80,3 @@ class Client:
             print(f"Received address : {addresses}")
 
             self.list_addresses = addresses
-
-
-if __name__ == '__main__':
-    node = Client("127.0.0.8", 4000, "127.0.0.1", 4000)
-    node.init_keys()
-    node.init_node_as_relay()
