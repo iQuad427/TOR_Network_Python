@@ -2,13 +2,15 @@ import pickle
 import socket
 import ipaddress
 import sys
+import threading
+
 import rsa
 
 starting_nodes = [("127.0.0.1", 4001), ("127.0.0.1", 4002), ("127.0.0.1", 4003), ("127.0.0.1", 4004)]
 
 
 class Node:
-    list_addresses = []
+    dict_addresses = {}
     public_key = 0
     private_key = 0
 
@@ -63,6 +65,29 @@ class Node:
         Request a subset of IP addresses to a node already in the network
         :return:
         """
+
+    def start_listener(self):
+        listener = threading.Thread(target=self.listener())
+        listener.start()
+    def listener(self):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock :
+            sock.bind((self.my_address, self.my_port))
+            sock.listen()
+            while True:
+                connection, address = sock.accept()
+                with connection:
+                    message = connection.recv(2048)
+                    message = pickle.loads(message)
+                    print(f"Message received : {message}\n"
+                          f"From : ({address[0]}, {address[1]})")
+                    print(message)
+                    #if type(message) is rsa.PublicKey:
+                    msg_to_node = pickle.dumps(self.dict_addresses)
+                    connection.send(msg_to_node)
+                    node_address = (address[0], address[1], message, False)
+                    self.dict_addresses[(address[0], address[1])] = (message, False)
+                    print(self.dict_addresses)
+
 
     def init_node_as_relay(self):
         """
