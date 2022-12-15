@@ -5,6 +5,8 @@ import socket
 import threading
 import time
 import rsa
+from Crypto.Cipher import AES
+from Crypto.Random import get_random_bytes
 
 import message_tool
 
@@ -69,6 +71,7 @@ class Node:
             raise PermissionError("Node not in phonebook")
 
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            # sock.bind((self.address[0], self.address[1] + 1))
             sock.connect(address)
 
             sock.send(pickle.dumps("phonebook"))
@@ -96,7 +99,7 @@ class Node:
                     del self.phonebook[entry]
 
     def define_path(self):
-        list_of_node = list(self.phonebook.keys())
+        list_of_node = [(entry, self.phonebook[entry]) for entry in self.phonebook]
         random.shuffle(list_of_node)
         while len(list_of_node) > PATH_LENGTH:
             index = random.randrange(0, len(list_of_node), 1)
@@ -106,16 +109,77 @@ class Node:
 
     def send(self, message):
         self.define_path()
-
         onion = message_tool.generate_onion(message, self.path)
         print(onion)
 
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
             print(self.path)
-            sock.connect(self.path[0])
+            sock.connect(self.path[0][0])
             sock.send(pickle.dumps("forward"))
             time.sleep(0.5)
             sock.send(pickle.dumps(onion[1:]))
+    def send_encrypted_packet(self, packet):
+        """
+        Add the path composed of IP addresses of at least 3 nodes and encrypt them with
+        the corresponding public keys and sends it to the first node.
+        :return:
+        """
+        self.define_path()
+        packet = bytes(packet, 'utf-8')
+        encrypted_packet = self.encrypt_public_packet(packet)
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            # sock.bind((self.address[0], self.address[1] + 2))
+            sock.connect(self.path[0][0])
+            print("before")
+            sock.send(pickle.dumps(encrypted_packet))
+            print("after")
+
+    def encrypt_public_packet(self, packet):  # Probablement la même fonction qu'en dessous
+        """
+        We assume that the packet already contains the IP address of the receiver outside the network
+        Encrypts packet with the public keys of the nodes contained in the list
+        :return:
+        """
+        encrypted_packet = packet
+
+        # decrypt_cipher = AES.new(key, AES.MODE_CTR, nonce=nonce)
+        # plain_text = decrypt_cipher.decrypt(cipher_text)
+        print(encrypted_packet)
+        # for i in range(len(self.path) - 1, 0, -1):
+        #     key = get_random_bytes(32)
+        #     cipher = AES.new(key, AES.MODE_CTR)
+        #     new_encrypted_packet = cipher.encrypt(encrypted_packet)
+        #     nonce = cipher.nonce
+        #     print(nonce)
+        #     encrypted_aes_key = rsa.encrypt(key, self.path[i][1][0])
+        #     encrypted_packet = new_encrypted_packet
+        #     new_encrypted_packet = encrypted_aes_key + nonce + encrypted_packet
+        #     encrypted_packet = new_encrypted_packet
+        i = 0
+        key = get_random_bytes(32)
+        cipher = AES.new(key, AES.MODE_CTR)
+        new_encrypted_packet = cipher.encrypt(encrypted_packet)
+        nonce = cipher.nonce
+        print(nonce)
+        encrypted_aes_key = rsa.encrypt(key, self.phonebook[("127.0.0.1", 4001)][0])
+        encrypted_packet = new_encrypted_packet
+        new_encrypted_packet = encrypted_aes_key #+ nonce + encrypted_packet
+        encrypted_packet = new_encrypted_packet
+        print(encrypted_packet)
+        return encrypted_packet
+
+    def decrypt_public_packet(self, packet, keys_list):
+        """
+        Decrypts received packet with the public keys of the nodes contained in the list
+        :return:
+        """
+
+    def decrypt_private_packet(self, packet):  # Probablement la même fonction qu'en dessous
+        """
+        Decrypts received packet with the private key
+        :return:
+        """
+
 
     def start(self):
         listener = threading.Thread(target=self.listener)
