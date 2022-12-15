@@ -1,4 +1,5 @@
 import client
+import message_tool
 
 starting_nodes = [("127.0.0.1", 4001), ("127.0.0.1", 4002), ("127.0.0.1", 4003), ("127.0.0.1", 4004)]
 
@@ -32,9 +33,7 @@ def start_network():
     south_node.init_node_as_relay()
 
 
-if __name__ == '__main__':
-    start_network()
-
+def test_phonebook():
     node = client.Node(("127.0.0.1", 4005))
     node.phonebook[("127.0.0.1", 4503)] = ["new node", False]
     node.phonebook[("127.0.0.1", 4504)] = ["new node", False]
@@ -43,11 +42,21 @@ if __name__ == '__main__':
     node.init_node_as_relay()
 
     node1 = client.Node(("127.0.0.1", 4006))
-    # node1.init_node_as_relay()
+    node1.init_node_as_relay()
     node1.phonebook[("127.0.0.1", 4005)] = ["known node from before", False]
 
     node1.update_phonebook(("127.0.0.1", 4005))
     node1.complete_entries_key(starting_nodes)
     # node1.define_path()
 
+    node1.send("bonjour")
+
     print(node1.phonebook)
+
+
+if __name__ == '__main__':
+    start_network()
+    # test_phonebook()
+
+    node = client.Node(("127.0.0.1", 4007))
+    node.send("oui")
