@@ -2,14 +2,14 @@ import rsa
 import socket
 import client
 
-starting_nodes = [("127.0.0.1", 4001), ("127.0.0.1", 4002), ("127.0.0.1", 4003), ("127.0.0.1", 4004)]
+starting_nodes = [("127.0.0.1", 4000), ("127.0.0.2", 4000), ("127.0.0.3", 4000), ("127.0.0.4", 4000)]
 
 
 def start_network():
     """
     Deploy the four kernel nodes of the TOR network
     """
-    west_node = client.Node(("127.0.0.1", 4503))
+    west_node = client.Node(("127.0.0.5", 5000))
     west_node.init_node_as_relay()
 
     north_node = client.Node(starting_nodes[1])

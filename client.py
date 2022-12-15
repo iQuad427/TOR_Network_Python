@@ -11,10 +11,18 @@ import message_tool
 PATH_LENGTH = 3
 
 starting_phonebook = {
-    ("127.0.0.1", 4001): ["west_node", False],
-    ("127.0.0.1", 4002): ["north_node", False],
-    ("127.0.0.1", 4003): ["east_node", False],
-    ("127.0.0.1", 4004): ["south_node", False],
+    ("127.0.0.1", 4000): ["west_node", False],
+    ("127.0.0.2", 4000): ["north_node", False],
+    ("127.0.0.3", 4000): ["east_node", False],
+    ("127.0.0.4", 4000): ["south_node", False],
+}
+
+port_dictionary = {
+    "listening":    0,
+    "peering":      1,
+    "forwarding":   2,
+    "sending":      3,
+    "phonebook":    4,
 }
 
 
@@ -30,18 +38,6 @@ def exchange_key(address):
         return 1
 
     return new_public_key
-
-
-def peel_address(message, key):
-    return ("", 0), ""
-
-
-def peel_layer(message, key):
-    return ""
-
-
-def add_layer(message, key):
-    return ""
 
 
 class Node:
@@ -69,6 +65,7 @@ class Node:
             raise PermissionError("Node not in phonebook")
 
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.bind((self.address[0], self.address[1] + port_dictionary["phonebook"]))
             sock.connect(address)
 
             sock.send(pickle.dumps("phonebook"))
@@ -106,22 +103,23 @@ class Node:
 
     def send(self, message):
         self.define_path()
+        print(f"Path : {self.path}")
 
         onion = message_tool.generate_onion(message, self.path)
-        print(onion)
+        print(f"Onion to send : {onion}")
+
+        next_address = self.path[0]
 
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            print(self.path)
-            sock.connect(self.path[0])
-            sock.send(pickle.dumps("forward"))
-            time.sleep(0.5)
+            sock.bind((self.address[0], self.address[1] + port_dictionary["sending"]))
+            sock.connect((next_address[0], next_address[1] + 1))
             sock.send(pickle.dumps(onion[1:]))
 
     def start(self):
-        listener = threading.Thread(target=self.listener)
-        listener.start()
+        threading.Thread(target=self.start_listening).start()
+        threading.Thread(target=self.start_forwarding).start()
 
-    def listener(self):
+    def start_listening(self):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
             sock.bind(self.address)
             sock.listen()
@@ -129,44 +127,46 @@ class Node:
             while True:
                 connection, address = sock.accept()
                 print(f"{self.address} accepted connection with: {address}")
-                need_to_close = True
 
-                message = connection.recv(2048)
-                message = pickle.loads(message)
-                print(f"received: {message}")
-                if message == "phonebook":
-                    connection.send(pickle.dumps(self.phonebook))
-                elif message == "public_key":
-                    if type(self.public_key) is not rsa.PublicKey:
-                        self.init_keys()
-                    connection.send(pickle.dumps(self.public_key))
-                elif type(message) is rsa.PublicKey:
-                    self.phonebook[(address[0], address[1])] = [message, False]
-                elif message == "forward":
-                    threading.Thread(target=self.start_forwarding, args=(connection,)).start()
-                    print(f"{self.address} forwarded a packet from {address}")
-                    need_to_close = False
+                with connection:
+                    message = connection.recv(2048)
+                    message = pickle.loads(message)
+                    print(f"received: {message}")
+                    if message == "phonebook":
+                        connection.send(pickle.dumps(self.phonebook))
+                    elif message == "public_key":
+                        if type(self.public_key) is not rsa.PublicKey:
+                            self.init_keys()
+                        connection.send(pickle.dumps(self.public_key))
+                    elif type(message) is rsa.PublicKey:
+                        self.phonebook[(address[0], address[1])] = [message, False]
 
-                if need_to_close:
-                    print("closing connection")
-                    connection.close()
+    def start_forwarding(self):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.bind((self.address[0], self.address[1] + port_dictionary["peering"]))
+            sock.listen()
 
-    def start_forwarding(self, previous_node):
+            while True:
+                connection, address = sock.accept()
+                threading.Thread(target=self.forwarding, args=(connection,)).start()
+                print(f"{self.address} forwarded a packet from {address}")
+
+    def forwarding(self, previous_node):
         # Connection information on next node
         while True:
             message = previous_node.recv(2048)
 
             if message != b'':
                 onion = pickle.loads(message)
+                next_address = onion[0]
 
                 if len(onion) == 1:
                     print(f"Message received at {self.address} : {onion[0]}")
                     return
 
                 next_node = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                next_node.connect(onion[0])
-
-                next_node.send(pickle.dumps("forward"))
-                time.sleep(0.5)
+                next_node.bind((self.address[0], self.address[1] + port_dictionary["forwarding"]))
+                next_node.connect((next_address[0], next_address[1] + port_dictionary["peering"]))
                 next_node.send(pickle.dumps(onion[1:]))
+
                 return
