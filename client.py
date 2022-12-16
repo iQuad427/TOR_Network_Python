@@ -102,18 +102,34 @@ class Node:
         self.path = list_of_node
 
     def send(self, message):
+        """
+        Send a packet after onioning it
+        :param message:
+        :return:
+        """
         self.define_path()
         print(f"Path : {self.path}")
 
-        onion = message_tool.generate_onion(message, self.path)
+        onion = self.encrypt_packet_for_path(message, self.path)
         print(f"Onion to send : {onion}")
+        pos = 0
+        for i in range(len(onion)):
+            # 58 = utf8 of :
+            if onion[i] == 58:
+                pos = i
+                break
 
-        next_address = self.path[0][0]
+        print(pos)
+        print(onion[:pos])
+        print(onion[:pos].decode('utf-8'))
+        next_address = eval(onion[:pos].decode('utf-8'))
+        print(next_address)
+        onion = onion[(pos + 1):]
 
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
             sock.bind((self.address[0], self.address[1] + port_dictionary["sending"]))
             sock.connect((next_address[0], next_address[1] + 1))
-            sock.send(pickle.dumps(onion[1:]))
+            sock.send(onion)
 
     def send_encrypted_packet(self, packet):
         """
@@ -136,7 +152,7 @@ class Node:
             self.phonebook[entry][0] = exchange_key(entry)
         print(self.phonebook)
 
-    def encrypt(self, message, address):
+    def encrypt(self, message, public_key):
         """
         Encrypt a message destined to a certain address
         :param message:
@@ -147,10 +163,27 @@ class Node:
         cipher = AES.new(key, AES.MODE_CTR)
         new_encrypted_packet = cipher.encrypt(message)
         nonce = cipher.nonce
-        encrypted_aes_key = rsa.encrypt(key, self.phonebook[address][0])
+        encrypted_aes_key = rsa.encrypt(key, public_key)
         encrypted_packet = encrypted_aes_key + nonce + new_encrypted_packet
         return encrypted_packet
 
+    def encrypt_packet_for_path(self, packet, path):  # Probablement la même fonction qu'en dessous
+        """
+        We assume that the packet already contains the IP address of the receiver outside the network
+        Encrypts packet with the public keys of the nodes contained in the list
+        :return:
+        """
+        encrypted_packet = bytes(packet, 'utf-8')
+        packaging_order = copy.deepcopy(path)
+        packaging_order.reverse()
+        for node in packaging_order:
+            print(node[1][0])
+            encrypted_packet = self.encrypt(encrypted_packet, node[1][0])
+            encrypted_packet = bytes(str(node[0]), 'utf-8') + bytes(":", 'utf-8') + encrypted_packet
+
+        return encrypted_packet
+# encrypt_node0 (path node1 + msg for node1 )
+# decrypt
     def decrypt(self, message):
         """
         Decrypt a message
@@ -256,16 +289,25 @@ class Node:
 
             # If we did receive the onion
             if message != b'':
-                onion = pickle.loads(message)
-                next_address = onion[0]
 
-                if len(onion) == 1:
-                    print(f"Message received at {self.address} : {onion[0]}")
+                onion = self.decrypt(message)
+                pos = 0
+                for i in range(len(onion)):
+                    # 58 = utf8 of :
+                    if onion[i] == 58:
+                        pos = i
+                        break
+
+                if pos == 0:
+                    print(f"Message received at {self.address} : {onion.decode('utf-8')}")
                     return
+
+                next_address = eval(onion[:pos].decode('utf-8'))
+                next_msg = onion[(pos + 1):]
 
                 next_node = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 next_node.bind((self.address[0], self.address[1] + port_dictionary["forwarding"]))
                 next_node.connect((next_address[0], next_address[1] + port_dictionary["peering"]))
-                next_node.send(pickle.dumps(onion[1:]))
+                next_node.send(next_msg)
 
                 return
