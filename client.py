@@ -3,11 +3,9 @@ import pickle
 import random
 import socket
 import threading
-import time
 import rsa
 from Crypto.Cipher import AES
 from Crypto.Random import get_random_bytes
-
 import message_tool
 
 PATH_LENGTH = 3
@@ -110,7 +108,7 @@ class Node:
         onion = message_tool.generate_onion(message, self.path)
         print(f"Onion to send : {onion}")
 
-        next_address = self.path[0]
+        next_address = self.path[0][0]
 
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
             sock.bind((self.address[0], self.address[1] + port_dictionary["sending"]))
@@ -160,9 +158,9 @@ class Node:
         new_encrypted_packet = cipher.encrypt(encrypted_packet)
         nonce = cipher.nonce
         print(nonce)
-        encrypted_aes_key = rsa.encrypt(key, self.phonebook[("127.0.0.1", 4001)][0])
+        encrypted_aes_key = rsa.encrypt(key, self.phonebook[("127.0.0.1", 4000)][0])
         encrypted_packet = new_encrypted_packet
-        new_encrypted_packet = encrypted_aes_key #+ nonce + encrypted_packet
+        new_encrypted_packet = encrypted_aes_key  # + nonce + encrypted_packet
         encrypted_packet = new_encrypted_packet
         print(encrypted_packet)
         return encrypted_packet
@@ -178,7 +176,6 @@ class Node:
         Decrypts received packet with the private key
         :return:
         """
-
 
     def start(self):
         threading.Thread(target=self.start_listening).start()
@@ -217,10 +214,16 @@ class Node:
                 print(f"{self.address} forwarded a packet from {address}")
 
     def forwarding(self, previous_node):
-        # Connection information on next node
         while True:
-            message = previous_node.recv(2048)
+            # Receive message (could be longer than 2048, need to concat)
+            message = b''
+            while True:
+                packet = previous_node.recv(2048)
+                if not packet:
+                    break
+                message += packet
 
+            # If we did receive the onion
             if message != b'':
                 onion = pickle.loads(message)
                 next_address = onion[0]

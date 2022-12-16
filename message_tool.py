@@ -6,6 +6,6 @@ def generate_onion(message, node_path):
     packaging_order.reverse()
     onion = [message]
     for hop in packaging_order:
-        onion.insert(0, hop)
+        onion.insert(0, hop[0])
 
     return onion
