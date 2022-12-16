@@ -131,6 +131,37 @@ class Node:
             sock.send(pickle.dumps(encrypted_packet))
             print("after")
 
+    def init_phonebook_public_keys(self):
+        for entry in self.phonebook :
+            self.phonebook[entry][0] = exchange_key(entry)
+        print(self.phonebook)
+
+    def encrypt(self, message, address):
+        """
+        Encrypt a message destined to a certain address
+        :param message:
+        :param address:
+        :return:
+        """
+        key = get_random_bytes(32)
+        cipher = AES.new(key, AES.MODE_CTR)
+        new_encrypted_packet = cipher.encrypt(message)
+        nonce = cipher.nonce
+        encrypted_aes_key = rsa.encrypt(key, self.phonebook[address][0])
+        encrypted_packet = encrypted_aes_key + nonce + new_encrypted_packet
+        return encrypted_packet
+
+    def decrypt(self, message):
+        """
+        Decrypt a message
+        :param message:
+        :return:
+        """
+        aes_key = rsa.decrypt(message[0:128], self.private_key)
+        cipher2 = AES.new(aes_key, AES.MODE_CTR, nonce=message[128:136])
+        decrypted_packet = cipher2.decrypt(message[136:])
+        return decrypted_packet
+
     def encrypt_public_packet(self, packet):  # Probablement la même fonction qu'en dessous
         """
         We assume that the packet already contains the IP address of the receiver outside the network
