@@ -4,7 +4,6 @@ import random
 import socket
 import threading
 import rsa
-
 import message_tool
 
 PATH_LENGTH = 3
@@ -22,6 +21,7 @@ port_dictionary = {
     "forwarding":   2,
     "sending":      3,
     "phonebook":    4,
+    "backwarding":  5,
 }
 
 
@@ -171,3 +171,16 @@ class Node:
                 next_node.send(onion)
 
                 return
+
+    def sign(self, packet):
+        return rsa.sign(packet, self.private_key, 'SHA-256')
+
+    def send_back(self, address, packet):
+        signature = self.sign(packet)
+        new_packet = signature+packet
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.bind((self.address[0], self.address[1] + port_dictionary["backwarding"]))
+            sock.connect((address[0], address[1] + 5))
+            sock.send(new_packet)
+
+
