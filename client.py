@@ -4,8 +4,7 @@ import random
 import socket
 import threading
 import rsa
-from Crypto.Cipher import AES
-from Crypto.Random import get_random_bytes
+
 import message_tool
 
 PATH_LENGTH = 3
@@ -24,20 +23,6 @@ port_dictionary = {
     "sending":      3,
     "phonebook":    4,
 }
-
-
-def exchange_key(address):
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            sock.connect(address)
-
-            sock.send(pickle.dumps("public_key"))
-            new_public_key = sock.recv(2048)
-            new_public_key = pickle.loads(new_public_key)
-    except socket.error:
-        return 1
-
-    return new_public_key
 
 
 class Node:
@@ -80,12 +65,12 @@ class Node:
                     self.phonebook[entry] = new_phonebook[entry]
                     new_entries.append(entry)
 
-            self.complete_entries_key(new_entries)
+            self.complete_phonebook(new_entries)
 
-    def complete_entries_key(self, addresses):
+    def complete_phonebook(self, addresses):
         for entry in addresses:
             if type(self.phonebook[entry][0]) is not rsa.PublicKey:
-                public_key = exchange_key(entry)
+                public_key = message_tool.request_key(entry)
                 if type(public_key) is rsa.PublicKey:
                     self.phonebook[entry][0] = public_key
                 else:
@@ -110,136 +95,20 @@ class Node:
         self.define_path()
         print(f"Path : {self.path}")
 
-        onion = self.encrypt_packet_for_path(message, self.path)
+        onion = message_tool.encrypt_path(message, self.path)
         print(f"Onion to send : {onion}")
-        pos = 0
-        for i in range(len(onion)):
-            # 58 = utf8 of :
-            if onion[i] == 58:
-                pos = i
-                break
 
-        print(pos)
-        print(onion[:pos])
-        print(onion[:pos].decode('utf-8'))
-        next_address = eval(onion[:pos].decode('utf-8'))
-        print(next_address)
-        onion = onion[(pos + 1):]
+        next_address, onion = message_tool.peel_address(onion, private_key=None)
 
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
             sock.bind((self.address[0], self.address[1] + port_dictionary["sending"]))
             sock.connect((next_address[0], next_address[1] + 1))
             sock.send(onion)
 
-    def send_encrypted_packet(self, packet):
-        """
-        Add the path composed of IP addresses of at least 3 nodes and encrypt them with
-        the corresponding public keys and sends it to the first node.
-        :return:
-        """
-        self.define_path()
-        packet = bytes(packet, 'utf-8')
-        encrypted_packet = self.encrypt_public_packet(packet)
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            # sock.bind((self.address[0], self.address[1] + 2))
-            sock.connect(self.path[0][0])
-            print("before")
-            sock.send(pickle.dumps(encrypted_packet))
-            print("after")
-
     def init_phonebook_public_keys(self):
-        for entry in self.phonebook :
-            self.phonebook[entry][0] = exchange_key(entry)
+        for entry in self.phonebook:
+            self.phonebook[entry][0] = message_tool.request_key(entry)
         print(self.phonebook)
-
-    def encrypt(self, message, public_key):
-        """
-        Encrypt a message destined to a certain address
-        :param message:
-        :param address:
-        :return:
-        """
-        key = get_random_bytes(32)
-        cipher = AES.new(key, AES.MODE_CTR)
-        new_encrypted_packet = cipher.encrypt(message)
-        nonce = cipher.nonce
-        encrypted_aes_key = rsa.encrypt(key, public_key)
-        encrypted_packet = encrypted_aes_key + nonce + new_encrypted_packet
-        return encrypted_packet
-
-    def encrypt_packet_for_path(self, packet, path):  # Probablement la même fonction qu'en dessous
-        """
-        We assume that the packet already contains the IP address of the receiver outside the network
-        Encrypts packet with the public keys of the nodes contained in the list
-        :return:
-        """
-        encrypted_packet = bytes(packet, 'utf-8')
-        packaging_order = copy.deepcopy(path)
-        packaging_order.reverse()
-        for node in packaging_order:
-            print(node[1][0])
-            encrypted_packet = self.encrypt(encrypted_packet, node[1][0])
-            encrypted_packet = bytes(str(node[0]), 'utf-8') + bytes(":", 'utf-8') + encrypted_packet
-
-        return encrypted_packet
-# encrypt_node0 (path node1 + msg for node1 )
-# decrypt
-    def decrypt(self, message):
-        """
-        Decrypt a message
-        :param message:
-        :return:
-        """
-        aes_key = rsa.decrypt(message[0:128], self.private_key)
-        cipher2 = AES.new(aes_key, AES.MODE_CTR, nonce=message[128:136])
-        decrypted_packet = cipher2.decrypt(message[136:])
-        return decrypted_packet
-
-    def encrypt_public_packet(self, packet):  # Probablement la même fonction qu'en dessous
-        """
-        We assume that the packet already contains the IP address of the receiver outside the network
-        Encrypts packet with the public keys of the nodes contained in the list
-        :return:
-        """
-        encrypted_packet = packet
-
-        # decrypt_cipher = AES.new(key, AES.MODE_CTR, nonce=nonce)
-        # plain_text = decrypt_cipher.decrypt(cipher_text)
-        print(encrypted_packet)
-        # for i in range(len(self.path) - 1, 0, -1):
-        #     key = get_random_bytes(32)
-        #     cipher = AES.new(key, AES.MODE_CTR)
-        #     new_encrypted_packet = cipher.encrypt(encrypted_packet)
-        #     nonce = cipher.nonce
-        #     print(nonce)
-        #     encrypted_aes_key = rsa.encrypt(key, self.path[i][1][0])
-        #     encrypted_packet = new_encrypted_packet
-        #     new_encrypted_packet = encrypted_aes_key + nonce + encrypted_packet
-        #     encrypted_packet = new_encrypted_packet
-        i = 0
-        key = get_random_bytes(32)
-        cipher = AES.new(key, AES.MODE_CTR)
-        new_encrypted_packet = cipher.encrypt(encrypted_packet)
-        nonce = cipher.nonce
-        print(nonce)
-        encrypted_aes_key = rsa.encrypt(key, self.phonebook[("127.0.0.1", 4000)][0])
-        encrypted_packet = new_encrypted_packet
-        new_encrypted_packet = encrypted_aes_key  # + nonce + encrypted_packet
-        encrypted_packet = new_encrypted_packet
-        print(encrypted_packet)
-        return encrypted_packet
-
-    def decrypt_public_packet(self, packet, keys_list):
-        """
-        Decrypts received packet with the public keys of the nodes contained in the list
-        :return:
-        """
-
-    def decrypt_private_packet(self, packet):  # Probablement la même fonction qu'en dessous
-        """
-        Decrypts received packet with the private key
-        :return:
-        """
 
     def start(self):
         threading.Thread(target=self.start_listening).start()
@@ -290,24 +159,15 @@ class Node:
             # If we did receive the onion
             if message != b'':
 
-                onion = self.decrypt(message)
-                pos = 0
-                for i in range(len(onion)):
-                    # 58 = utf8 of :
-                    if onion[i] == 58:
-                        pos = i
-                        break
+                next_address, onion = message_tool.peel_address(message, self.private_key)
 
-                if pos == 0:
+                if next_address is None:
                     print(f"Message received at {self.address} : {onion.decode('utf-8')}")
                     return
-
-                next_address = eval(onion[:pos].decode('utf-8'))
-                next_msg = onion[(pos + 1):]
 
                 next_node = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 next_node.bind((self.address[0], self.address[1] + port_dictionary["forwarding"]))
                 next_node.connect((next_address[0], next_address[1] + port_dictionary["peering"]))
-                next_node.send(next_msg)
+                next_node.send(onion)
 
                 return
