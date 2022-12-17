@@ -19,6 +19,8 @@ def start_network():
 
     south_node = client.Node(starting_nodes[3])
     south_node.init_node_as_relay()
+    south_node.signup_to_authentication_server()
+    south_node.signin_to_authentication_server()
 
 
 def test_phonebook():
@@ -40,7 +42,7 @@ def test_phonebook():
 
     node1.update_phonebook(("127.0.0.5", 4040))
     node1.complete_phonebook(starting_nodes)
-    print(node1.phonebook)
+    #print(node1.phonebook)
 
 
 def test_forwarding():

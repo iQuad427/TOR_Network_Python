@@ -3,6 +3,8 @@ import pickle
 import random
 import socket
 import threading
+import time
+
 import rsa
 import message_tool
 
@@ -28,6 +30,7 @@ port_dictionary = {
 
 class Node:
     backwarding_sockets = []
+
     def __init__(self, own_address):
         self.public_key = 0
         self.private_key = 0
@@ -35,6 +38,7 @@ class Node:
         self.address = (own_address[0], own_address[1])
         self.phonebook = copy.deepcopy(starting_phonebook)
         self.path = []
+        self.free_port = 5000
 
     def init_node_as_relay(self):
         self.start()
@@ -95,10 +99,10 @@ class Node:
         :return:
         """
         self.define_path()
-        print(f"Path : {self.path}")
+        #print(f"Path : {self.path}")
 
         onion = message_tool.encrypt_path(message, self.path)
-        print(f"Onion to send : {onion}")
+        #print(f"Onion to send : {onion}")
 
         next_address, onion = message_tool.peel_address(onion, private_key=None)
 
@@ -110,7 +114,7 @@ class Node:
     def init_phonebook_public_keys(self):
         for entry in self.phonebook:
             self.phonebook[entry][0] = message_tool.request_key(entry)
-        print(self.phonebook)
+        #print(self.phonebook)
 
     def start(self):
         threading.Thread(target=self.start_listening).start()
@@ -123,12 +127,12 @@ class Node:
 
             while True:
                 connection, address = sock.accept()
-                print(f"{self.address} accepted connection with: {address}")
+                #print(f"{self.address} accepted connection with: {address}")
 
                 with connection:
                     message = connection.recv(2048)
                     message = pickle.loads(message)
-                    print(f"received: {message}")
+                    #print(f"received: {message}")
                     if message == "phonebook":
                         connection.send(pickle.dumps(self.phonebook))
                     elif message == "public_key":
@@ -145,13 +149,15 @@ class Node:
 
             while True:
                 connection, address = sock.accept()
+                # print(f"{self.address} forwarded a packet from {address}")
                 threading.Thread(target=self.forwarding, args=(connection, address)).start()
-                print(f"{self.address} forwarded a packet from {address}")
+                # print(f"{self.address} forwarded a packet from {address}")
 
     def forwarding(self, previous_node, address):
         while True:
             # Receive message (could be longer than 2048, need to concat)
             message = b''
+            # print("here", self.address)
             while True:
                 packet = previous_node.recv(2048)
                 if not packet:
@@ -160,29 +166,30 @@ class Node:
 
             # If we did receive the onion
             if message != b'':
-
                 next_address, onion = message_tool.peel_address(message, self.private_key)
 
-                print("Next address : " + str(next_address))
-                print("Next message : " + str(onion))
+                # print("Next address : " + str(next_address))
+                # print("Next message : " + str(onion))
 
                 if next_address is None:
-                    print(f"Message received at {self.address} : {onion.decode('utf-8')}")
+                    # print(f"Message received at {self.address} : {onion.decode('utf-8')}")
                     return
 
                 next_node = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                #next_node.bind((self.address[0], self.address[1] + port_dictionary["forwarding"]))
+                next_node.bind((self.address[0], self.free_port))
+                self.free_port += 1
                 next_node.connect((next_address[0], next_address[1] + port_dictionary["peering"]))
                 next_node.send(onion)
-                forward_thread = threading.Thread(target=self.forward_loop, args=(previous_node, next_node))
-                backward_thread = threading.Thread(target=self.backward_loop, args=(previous_node, next_node))
-                forward_thread.start()
-                backward_thread.start()
-                forward_thread.join()
-                backward_thread.join()
+                # threading.Thread(target=self.forward_loop, args=(previous_node, next_node)).start()
+                # backward_thread = threading.Thread(target=self.backward_loop, args=(previous_node, next_node,))
+                #forward_thread.start()
+                # backward_thread.start()
+                # forward_thread.join()
+                # backward_thread.join()
                 return
 
     def forward_loop(self, previous_node, next_node):
+
         while True:
             # Receive message (could be longer than 2048, need to concat)
             message = b''
@@ -194,13 +201,11 @@ class Node:
 
             # If we did receive the onion
             if message != b'':
-
                 next_address, onion = message_tool.peel_address(message, self.private_key)
 
-                print("Next address : " + str(next_address))
-                print("Next message : " + str(onion))
+                #print("Next address : " + str(next_address))
+                #print("Next message : " + str(onion))
                 next_node.send(onion)
-
 
     def backward_loop(self, previous_node, next_node):
         while True:
@@ -224,3 +229,42 @@ class Node:
             sock.bind((self.address[0], self.address[1] + port_dictionary["backwarding"]))
             sock.connect((address[0], address[1] + port_dictionary["backwarding"]))
             sock.send(new_packet)
+
+    def signup_to_authentication_server(self):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.connect(("127.1.1.1", 4000))
+            sock.send("Give me your public key".encode())
+            public_key = sock.recv(2048)
+            public_key = pickle.loads(public_key)
+            sock.send("Signup".encode())
+            if sock.recv(2048).decode() == "Username":
+                sock.send(self.address[0].encode())
+            else:
+                print("error")
+            if sock.recv(2048).decode() == "Password":
+                sock.send(message_tool.encrypt("postgres".encode(), public_key))
+            else:
+                print("error")
+            if sock.recv(2048).decode() == "Password":
+                sock.send(message_tool.encrypt("postgres".encode(), public_key))
+            else:
+                print("error")
+            print(f"Received message from server : {sock.recv(2048).decode()}")
+
+    def signin_to_authentication_server(self):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.connect(("127.1.1.1", 4000))
+            sock.send("Give me your public key".encode())
+            public_key = sock.recv(2048)
+            public_key = pickle.loads(public_key)
+            sock.send("Signin".encode())
+            if sock.recv(2048).decode() == "Username":
+                sock.send(self.address[0].encode())
+            else:
+                print("error")
+            if sock.recv(2048).decode() == "Password":
+                sock.send(message_tool.encrypt("postgres".encode(), public_key))
+            else:
+                print("error")
+            print(f"Received message from server : {sock.recv(2048).decode()}")
+
