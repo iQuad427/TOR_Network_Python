@@ -9,7 +9,7 @@ import message_tool
 PATH_LENGTH = 3
 
 starting_phonebook = {
-    ("127.0.0.1", 4000): ["west_node", False],
+    ("127.0.0.1", 4000): ["west_node", True],
     ("127.0.0.2", 4000): ["north_node", False],
     ("127.0.0.3", 4000): ["east_node", False],
     ("127.0.0.4", 4000): ["south_node", False],
@@ -19,9 +19,9 @@ port_dictionary = {
     "listening":    0,
     "peering":      1,
     "forwarding":   2,
-    "sending":      3,
-    "phonebook":    4,
-    "backwarding":  5,
+    "backwarding":  3,
+    "sending":      4,
+    "phonebook":    5,
 }
 
 
@@ -32,6 +32,7 @@ class Node:
         self.init_keys()
         self.address = (own_address[0], own_address[1])
         self.phonebook = copy.deepcopy(starting_phonebook)
+        self.exit = set()
         self.path = []
 
     def init_node_as_relay(self):
@@ -42,10 +43,20 @@ class Node:
         # TODO : Check if keys are already set, else do whatever bro, idk
         (self.public_key, self.private_key) = rsa.newkeys(1024)
 
+    def init_phonebook(self):
+        self.phonebook = copy.deepcopy(starting_phonebook)
+        self.complete_phonebook([entry for entry in self.phonebook])
+        self.update_exit()
+
     def reset_phonebook(self):
-        self.phonebook = starting_phonebook
+        self.init_phonebook()
 
     def update_phonebook(self, address):
+        """
+        Update the phonebook through a peer phonebook
+        :param address:
+        :return:
+        """
         if address not in self.phonebook:
             raise PermissionError("Node not in phonebook")
 
@@ -77,12 +88,29 @@ class Node:
                     # Communication failed, suppose that node is offline, remove from phonebook
                     del self.phonebook[entry]
 
+    def update_exit(self):
+        new_exit = set()
+        for entry in self.phonebook:
+            if self.phonebook[entry][1]:
+                new_exit.add(entry)
+
+        self.exit = new_exit
+
     def define_path(self):
         list_of_node = [(entry, self.phonebook[entry]) for entry in self.phonebook]
         random.shuffle(list_of_node)
         while len(list_of_node) > PATH_LENGTH:
             index = random.randrange(0, len(list_of_node), 1)
             list_of_node.pop(index)
+
+        self.update_exit()
+        list_of_exit = list(self.exit)
+        if len(list_of_exit) > 0:
+            random.shuffle(list_of_exit)
+            exit_node = list_of_exit[random.randrange(0, len(list_of_exit), 1)] if len(list_of_exit) > 1 else list_of_exit[0]
+            list_of_node.append((exit_node, self.phonebook[exit_node]))
+        else:
+            raise ConnectionError("No exit node were found")
 
         self.path = list_of_node
 
@@ -160,9 +188,6 @@ class Node:
             if message != b'':
 
                 next_address, onion = message_tool.peel_address(message, self.private_key)
-
-                print("Next address : " + str(next_address))
-                print("Next message : " + str(onion))
 
                 if next_address is None:
                     print(f"Message received at {self.address} : {onion.decode('utf-8')}")
