@@ -83,6 +83,8 @@ def peel_address(onion, private_key=None):
     if pos != 0:
         next_address = eval(onion[:pos].decode('utf-8'))
         next_onion = onion[(pos + 1):]
+    else:
+        next_onion = onion
 
     return next_address, next_onion
 

@@ -161,6 +161,9 @@ class Node:
 
                 next_address, onion = message_tool.peel_address(message, self.private_key)
 
+                print("Next address : " + str(next_address))
+                print("Next message : " + str(onion))
+
                 if next_address is None:
                     print(f"Message received at {self.address} : {onion.decode('utf-8')}")
                     return
