@@ -21,9 +21,6 @@ def start_network():
     north_node = client.Node(starting_nodes[1])
     north_node.init_node_as_relay()
     north_node.init_phonebook_public_keys()
-    north_node.send_encrypted_packet(
-        "We assume that the packet already contains the IP address of the receiver outside the network"
-        + "Encrypts packet with the public keys of the nodes contained in the list")
 
 
 if __name__ == '__main__':

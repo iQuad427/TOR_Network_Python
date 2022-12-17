@@ -16,16 +16,18 @@ starting_phonebook = {
 }
 
 port_dictionary = {
-    "listening":    0,
-    "peering":      1,
-    "forwarding":   2,
-    "sending":      3,
-    "phonebook":    4,
-    "backwarding":  5,
+    "listening": 0,
+    "peering": 1,
+    "forwarding": 2,
+    "backwarding": 3,
+    "sending": 4,
+    "phonebook": 5,
+
 }
 
 
 class Node:
+    backwarding_sockets = []
     def __init__(self, own_address):
         self.public_key = 0
         self.private_key = 0
@@ -143,10 +145,10 @@ class Node:
 
             while True:
                 connection, address = sock.accept()
-                threading.Thread(target=self.forwarding, args=(connection,)).start()
+                threading.Thread(target=self.forwarding, args=(connection, address)).start()
                 print(f"{self.address} forwarded a packet from {address}")
 
-    def forwarding(self, previous_node):
+    def forwarding(self, previous_node, address):
         while True:
             # Receive message (could be longer than 2048, need to concat)
             message = b''
@@ -169,21 +171,56 @@ class Node:
                     return
 
                 next_node = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                next_node.bind((self.address[0], self.address[1] + port_dictionary["forwarding"]))
+                #next_node.bind((self.address[0], self.address[1] + port_dictionary["forwarding"]))
                 next_node.connect((next_address[0], next_address[1] + port_dictionary["peering"]))
                 next_node.send(onion)
-
+                forward_thread = threading.Thread(target=self.forward_loop, args=(previous_node, next_node))
+                backward_thread = threading.Thread(target=self.backward_loop, args=(previous_node, next_node))
+                forward_thread.start()
+                backward_thread.start()
+                forward_thread.join()
+                backward_thread.join()
                 return
+
+    def forward_loop(self, previous_node, next_node):
+        while True:
+            # Receive message (could be longer than 2048, need to concat)
+            message = b''
+            while True:
+                packet = previous_node.recv(2048)
+                if not packet:
+                    break
+                message += packet
+
+            # If we did receive the onion
+            if message != b'':
+
+                next_address, onion = message_tool.peel_address(message, self.private_key)
+
+                print("Next address : " + str(next_address))
+                print("Next message : " + str(onion))
+                next_node.send(onion)
+
+
+    def backward_loop(self, previous_node, next_node):
+        while True:
+            # Receive message (could be longer than 2048, need to concat)
+            while True:
+                packet = next_node.recv(2048)
+                if not packet:
+                    break
+                signature = self.sign(packet)
+                message = signature + packet
+                previous_node.send(message)
+            return
 
     def sign(self, packet):
         return rsa.sign(packet, self.private_key, 'SHA-256')
 
     def send_back(self, address, packet):
         signature = self.sign(packet)
-        new_packet = signature+packet
+        new_packet = signature + packet
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
             sock.bind((self.address[0], self.address[1] + port_dictionary["backwarding"]))
-            sock.connect((address[0], address[1] + 5))
+            sock.connect((address[0], address[1] + port_dictionary["backwarding"]))
             sock.send(new_packet)
-
-
