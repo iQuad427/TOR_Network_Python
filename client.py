@@ -23,6 +23,7 @@ port_dictionary = {
     "forwarding":   2,
     "sending":      3,
     "phonebook":    4,
+    "backwarding":  5,
 }
 
 
@@ -129,23 +130,24 @@ class Node:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
             sock.bind((self.address[0], self.address[1] + port_dictionary["sending"]))
             sock.connect((next_address[0], next_address[1] + 1))
+            print("yoooooooooooooooooooo", next_address[1])
             sock.send(onion)
 
-    def send_encrypted_packet(self, packet):
-        """
-        Add the path composed of IP addresses of at least 3 nodes and encrypt them with
-        the corresponding public keys and sends it to the first node.
-        :return:
-        """
-        self.define_path()
-        packet = bytes(packet, 'utf-8')
-        encrypted_packet = self.encrypt_public_packet(packet)
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            # sock.bind((self.address[0], self.address[1] + 2))
-            sock.connect(self.path[0][0])
-            print("before")
-            sock.send(pickle.dumps(encrypted_packet))
-            print("after")
+    # def send_encrypted_packet(self, packet):
+    #     """
+    #     Add the path composed of IP addresses of at least 3 nodes and encrypt them with
+    #     the corresponding public keys and sends it to the first node.
+    #     :return:
+    #     """
+    #     self.define_path()
+    #     packet = bytes(packet, 'utf-8')
+    #     encrypted_packet = self.encrypt_public_packet(packet)
+    #     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+    #         # sock.bind((self.address[0], self.address[1] + 2))
+    #         sock.connect(self.path[0][0])
+    #         print("before")
+    #         sock.send(pickle.dumps(encrypted_packet))
+    #         print("after")
 
     def init_phonebook_public_keys(self):
         for entry in self.phonebook :
@@ -156,7 +158,7 @@ class Node:
         """
         Encrypt a message destined to a certain address
         :param message:
-        :param address:
+        :param public_key:
         :return:
         """
         key = get_random_bytes(32)
@@ -195,39 +197,29 @@ class Node:
         decrypted_packet = cipher2.decrypt(message[136:])
         return decrypted_packet
 
-    def encrypt_public_packet(self, packet):  # Probablement la même fonction qu'en dessous
-        """
-        We assume that the packet already contains the IP address of the receiver outside the network
-        Encrypts packet with the public keys of the nodes contained in the list
-        :return:
-        """
-        encrypted_packet = packet
-
-        # decrypt_cipher = AES.new(key, AES.MODE_CTR, nonce=nonce)
-        # plain_text = decrypt_cipher.decrypt(cipher_text)
-        print(encrypted_packet)
-        # for i in range(len(self.path) - 1, 0, -1):
-        #     key = get_random_bytes(32)
-        #     cipher = AES.new(key, AES.MODE_CTR)
-        #     new_encrypted_packet = cipher.encrypt(encrypted_packet)
-        #     nonce = cipher.nonce
-        #     print(nonce)
-        #     encrypted_aes_key = rsa.encrypt(key, self.path[i][1][0])
-        #     encrypted_packet = new_encrypted_packet
-        #     new_encrypted_packet = encrypted_aes_key + nonce + encrypted_packet
-        #     encrypted_packet = new_encrypted_packet
-        i = 0
-        key = get_random_bytes(32)
-        cipher = AES.new(key, AES.MODE_CTR)
-        new_encrypted_packet = cipher.encrypt(encrypted_packet)
-        nonce = cipher.nonce
-        print(nonce)
-        encrypted_aes_key = rsa.encrypt(key, self.phonebook[("127.0.0.1", 4000)][0])
-        encrypted_packet = new_encrypted_packet
-        new_encrypted_packet = encrypted_aes_key  # + nonce + encrypted_packet
-        encrypted_packet = new_encrypted_packet
-        print(encrypted_packet)
-        return encrypted_packet
+    # def encrypt_public_packet(self, packet):  # Probablement la même fonction qu'en dessous
+    #     """
+    #     We assume that the packet already contains the IP address of the receiver outside the network
+    #     Encrypts packet with the public keys of the nodes contained in the list
+    #     :return:
+    #     """
+    #     encrypted_packet = packet
+    #
+    #     # decrypt_cipher = AES.new(key, AES.MODE_CTR, nonce=nonce)
+    #     # plain_text = decrypt_cipher.decrypt(cipher_text)
+    #     print(encrypted_packet)
+    #     i = 0
+    #     key = get_random_bytes(32)
+    #     cipher = AES.new(key, AES.MODE_CTR)
+    #     new_encrypted_packet = cipher.encrypt(encrypted_packet)
+    #     nonce = cipher.nonce
+    #     print(nonce)
+    #     encrypted_aes_key = rsa.encrypt(key, self.phonebook[("127.0.0.1", 4000)][0])
+    #     encrypted_packet = new_encrypted_packet
+    #     new_encrypted_packet = encrypted_aes_key  # + nonce + encrypted_packet
+    #     encrypted_packet = new_encrypted_packet
+    #     print(encrypted_packet)
+    #     return encrypted_packet
 
     def decrypt_public_packet(self, packet, keys_list):
         """
@@ -311,3 +303,16 @@ class Node:
                 next_node.send(next_msg)
 
                 return
+
+    def sign(self, packet):
+        return rsa.sign(packet, self.private_key, 'SHA-256')
+
+    def send_back(self, address, packet):
+        signature = self.sign(packet)
+        new_packet = signature+packet
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.bind((self.address[0], self.address[1] + port_dictionary["backwarding"]))
+            sock.connect((address[0], address[1] + 5))
+            sock.send(new_packet)
+
+
