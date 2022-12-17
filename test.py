@@ -39,13 +39,13 @@ def test_phonebook():
     node1.phonebook[("127.0.0.5", 4040)] = ["known node from before", False]
 
     node1.update_phonebook(("127.0.0.5", 4040))
-    node1.complete_entries_key(starting_nodes)
+    node1.complete_phonebook(starting_nodes)
     print(node1.phonebook)
 
 
 def test_forwarding():
     node = client.Node(("127.0.0.5", 4000))
-    node.complete_entries_key(starting_nodes)
+    node.complete_phonebook(starting_nodes)
     node.send("0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
               "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
               "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
