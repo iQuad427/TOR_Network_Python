@@ -116,8 +116,6 @@ class Node:
                         if type(self.public_key) is not rsa.PublicKey:
                             self.init_keys()
                         connection.send(pickle.dumps(self.public_key))
-                    elif type(message) is rsa.PublicKey:
-                        self.phonebook[(address[0], address[1])] = [message, False]
 
     def start_forwarding(self):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
