@@ -4,7 +4,6 @@ import random
 import socket
 import threading
 import time
-
 import rsa
 import tools
 from phonebook import Phonebook
@@ -29,6 +28,7 @@ port_dictionary = {
 
 
 class Node:
+    backwarding_sockets = []
     def __init__(self, own_address):
         self.public_key = 0
         self.private_key = 0
@@ -38,6 +38,7 @@ class Node:
         self.init_phonebook()
         self.exit = set()
         self.path = []
+        self.free_port = 5000
 
     def init_node_as_relay(self):
         self.start()
@@ -166,3 +167,42 @@ class Node:
             sock.bind((self.address[0], self.address[1] + port_dictionary["backwarding"]))
             sock.connect((address[0], address[1] + port_dictionary["backwarding"]))
             sock.send(new_packet)
+
+    def signup_to_authentication_server(self):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.connect(("127.1.1.1", 4000))
+            sock.send("Give me your public key".encode())
+            public_key = sock.recv(2048)
+            public_key = pickle.loads(public_key)
+            sock.send("Signup".encode())
+            if sock.recv(2048).decode() == "Username":
+                sock.send(self.address[0].encode())
+            else:
+                print("error")
+            if sock.recv(2048).decode() == "Password":
+                sock.send(tools.encrypt("postgres".encode(), public_key))
+            else:
+                print("error")
+            if sock.recv(2048).decode() == "Password":
+                sock.send(tools.encrypt("postgres".encode(), public_key))
+            else:
+                print("error")
+            print(f"Received message from server : {sock.recv(2048).decode()}")
+
+    def signin_to_authentication_server(self):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.connect(("127.1.1.1", 4000))
+            sock.send("Give me your public key".encode())
+            public_key = sock.recv(2048)
+            public_key = pickle.loads(public_key)
+            sock.send("Signin".encode())
+            if sock.recv(2048).decode() == "Username":
+                sock.send(self.address[0].encode())
+            else:
+                print("error")
+            if sock.recv(2048).decode() == "Password":
+                sock.send(tools.encrypt("postgres".encode(), public_key))
+            else:
+                print("error")
+            print(f"Received message from server : {sock.recv(2048).decode()}")
+

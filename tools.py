@@ -55,7 +55,7 @@ def encrypt_path(packet, path):
     packaging_order = copy.deepcopy(path)
     packaging_order.reverse()
     for node in packaging_order:
-        print(node[1][0])
+        #print(node[1][0])
         encrypted_packet = encrypt(encrypted_packet, node[1][0])
         encrypted_packet = bytes(str(node[0]), 'utf-8') + bytes(":", 'utf-8') + encrypted_packet
 
@@ -115,6 +115,4 @@ def send_encrypted_packet(self, packet, public_key):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         # sock.bind((self.address[0], self.address[1] + 2))
         sock.connect(self.path[0][0])
-        print("before")
         sock.send(pickle.dumps(encrypted_packet))
-        print("after")

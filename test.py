@@ -22,6 +22,8 @@ def start_network():
 
     south_node = client.Node(starting_nodes[3])
     south_node.init_node_as_relay()
+    south_node.signup_to_authentication_server()
+    south_node.signin_to_authentication_server()
 
 
 def test_phonebook():
@@ -113,12 +115,6 @@ def test_forwarding():
               "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
               "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
               "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000")
-
-
-def add_loop(num):
-    while True:
-        print(num)
-        time.sleep(1)
 
 
 if __name__ == '__main__':
