@@ -1,5 +1,8 @@
+import threading
+import time
+
 import client
-import message_tool
+import tools
 
 starting_nodes = [("127.0.0.1", 4000), ("127.0.0.2", 4000), ("127.0.0.3", 4000), ("127.0.0.4", 4000)]
 
@@ -28,24 +31,28 @@ def test_phonebook():
     client.Node(("127.0.0.5", 4030)).init_node_as_relay()
 
     node0 = client.Node(("127.0.0.5", 4040))
-    node0.phonebook[("127.0.0.5", 4000)] = ["new node", False]
-    node0.phonebook[("127.0.0.5", 4010)] = ["new node", False]
-    node0.phonebook[("127.0.0.5", 4020)] = ["new node", False]
-    node0.phonebook[("127.0.0.5", 4030)] = ["new node", False]
+
+    contact_dict = {
+        ("127.0.0.5", 4000): ["new node", False],
+        ("127.0.0.5", 4010): ["new node", False],
+        ("127.0.0.5", 4020): ["new node", False],
+        ("127.0.0.5", 4030): ["new node", False],
+    }
+    node0.phonebook.update_contact_list(contact_dict)
     node0.init_node_as_relay()
 
     node1 = client.Node(("127.0.0.5", 4050))
     node1.init_node_as_relay()
-    node1.phonebook[("127.0.0.5", 4040)] = ["known node from before", False]
+    node1.phonebook.update_contact_list({("127.0.0.5", 4040): ["known node from before", False]})
 
     node1.update_phonebook(("127.0.0.5", 4040))
-    node1.complete_phonebook(starting_nodes)
+    node1.phonebook.complete_contacts(starting_nodes)
     print(node1.phonebook)
 
 
 def test_forwarding():
     node = client.Node(("127.0.0.5", 4000))
-    node.complete_phonebook(starting_nodes)
+    node.phonebook.complete_contacts(starting_nodes)
     node.send("0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
               "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
               "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
@@ -108,9 +115,13 @@ def test_forwarding():
               "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000")
 
 
+def add_loop(num):
+    while True:
+        print(num)
+        time.sleep(1)
+
+
 if __name__ == '__main__':
     start_network()
     test_phonebook()
     test_forwarding()
-
-

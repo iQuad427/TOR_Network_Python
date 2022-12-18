@@ -20,7 +20,6 @@ def start_network():
 
     north_node = client.Node(starting_nodes[1])
     north_node.init_node_as_relay()
-    north_node.init_phonebook_public_keys()
 
 
 if __name__ == '__main__':

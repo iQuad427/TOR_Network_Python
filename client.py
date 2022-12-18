@@ -3,8 +3,11 @@ import pickle
 import random
 import socket
 import threading
+import time
+
 import rsa
-import message_tool
+import tools
+from phonebook import Phonebook
 
 PATH_LENGTH = 3
 
@@ -26,13 +29,13 @@ port_dictionary = {
 
 
 class Node:
-    backwarding_sockets = []
     def __init__(self, own_address):
         self.public_key = 0
         self.private_key = 0
         self.init_keys()
         self.address = (own_address[0], own_address[1])
-        self.phonebook = copy.deepcopy(starting_phonebook)
+        self.phonebook = Phonebook()
+        self.init_phonebook()
         self.exit = set()
         self.path = []
 
@@ -45,20 +48,16 @@ class Node:
         (self.public_key, self.private_key) = rsa.newkeys(1024)
 
     def init_phonebook(self):
-        self.phonebook = copy.deepcopy(starting_phonebook)
-        self.complete_phonebook([entry for entry in self.phonebook])
-        self.update_exit()
-
-    def reset_phonebook(self):
-        self.init_phonebook()
+        list_of_contact = copy.deepcopy(starting_phonebook)
+        self.phonebook.update_contact_list(list_of_contact)
+        self.phonebook.complete_contacts([contact for contact in list_of_contact])
 
     def update_phonebook(self, address):
         """
         Update the phonebook through a peer phonebook
-        :param address:
-        :return:
+        :param address: address of the peer we want the phonebook of
         """
-        if address not in self.phonebook:
+        if address not in self.phonebook.get_contacts():
             raise PermissionError("Node not in phonebook")
 
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
@@ -69,51 +68,10 @@ class Node:
             new_phonebook = sock.recv(2048)
             new_phonebook = pickle.loads(new_phonebook)
 
-            new_entries = []
-            for entry in new_phonebook:
-                # add new address only if it was not already in our phonebook,
-                # no modification of the previous addresses
-                if entry not in self.phonebook:
-                    self.phonebook[entry] = new_phonebook[entry]
-                    new_entries.append(entry)
+            self.phonebook.update_contact_list(new_phonebook)
 
-            self.complete_phonebook(new_entries)
-
-    def complete_phonebook(self, addresses):
-        for entry in addresses:
-            if type(self.phonebook[entry][0]) is not rsa.PublicKey:
-                public_key = message_tool.request_key(entry)
-                if type(public_key) is rsa.PublicKey:
-                    self.phonebook[entry][0] = public_key
-                else:
-                    # Communication failed, suppose that node is offline, remove from phonebook
-                    del self.phonebook[entry]
-
-    def update_exit(self):
-        new_exit = set()
-        for entry in self.phonebook:
-            if self.phonebook[entry][1]:
-                new_exit.add(entry)
-
-        self.exit = new_exit
-
-    def define_path(self):
-        list_of_node = [(entry, self.phonebook[entry]) for entry in self.phonebook]
-        random.shuffle(list_of_node)
-        while len(list_of_node) > PATH_LENGTH:
-            index = random.randrange(0, len(list_of_node), 1)
-            list_of_node.pop(index)
-
-        self.update_exit()
-        list_of_exit = list(self.exit)
-        if len(list_of_exit) > 0:
-            random.shuffle(list_of_exit)
-            exit_node = list_of_exit[random.randrange(0, len(list_of_exit), 1)] if len(list_of_exit) > 1 else list_of_exit[0]
-            list_of_node.append((exit_node, self.phonebook[exit_node]))
-        else:
-            raise ConnectionError("No exit node were found")
-
-        self.path = list_of_node
+    def set_path(self):
+        self.path = self.phonebook.define_path(PATH_LENGTH)
 
     def send(self, message):
         """
@@ -121,23 +79,18 @@ class Node:
         :param message:
         :return:
         """
-        self.define_path()
+        self.set_path()
         print(f"Path : {self.path}")
 
-        onion = message_tool.encrypt_path(message, self.path)
+        onion = tools.encrypt_path(message, self.path)
         print(f"Onion to send : {onion}")
 
-        next_address, onion = message_tool.peel_address(onion, private_key=None)
+        next_address, onion = tools.peel_address(onion, private_key=None)
 
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
             sock.bind((self.address[0], self.address[1] + port_dictionary["sending"]))
             sock.connect((next_address[0], next_address[1] + 1))
             sock.send(onion)
-
-    def init_phonebook_public_keys(self):
-        for entry in self.phonebook:
-            self.phonebook[entry][0] = message_tool.request_key(entry)
-        print(self.phonebook)
 
     def start(self):
         threading.Thread(target=self.start_listening).start()
@@ -157,7 +110,7 @@ class Node:
                     message = pickle.loads(message)
                     print(f"received: {message}")
                     if message == "phonebook":
-                        connection.send(pickle.dumps(self.phonebook))
+                        connection.send(pickle.dumps(self.phonebook.get_contact_list()))
                     elif message == "public_key":
                         if type(self.public_key) is not rsa.PublicKey:
                             self.init_keys()
@@ -186,56 +139,21 @@ class Node:
                 message += packet
 
             # If we did receive the onion
-            if message != b'':
-
-                next_address, onion = message_tool.peel_address(message, self.private_key)
-
-                if next_address is None:
-                    print(f"Message received at {self.address} : {onion.decode('utf-8')}")
-                    return
-
-                next_node = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                # next_node.bind((self.address[0], self.address[1] + port_dictionary["forwarding"]))
-                next_node.connect((next_address[0], next_address[1] + port_dictionary["peering"]))
-                next_node.send(onion)
-                forward_thread = threading.Thread(target=self.forward_loop, args=(previous_node, next_node))
-                backward_thread = threading.Thread(target=self.backward_loop, args=(previous_node, next_node))
-                forward_thread.start()
-                backward_thread.start()
-                forward_thread.join()
-                backward_thread.join()
+            if message == b'':
                 return
 
-    def forward_loop(self, previous_node, next_node):
-        while True:
-            # Receive message (could be longer than 2048, need to concat)
-            message = b''
-            while True:
-                packet = previous_node.recv(2048)
-                if not packet:
-                    break
-                message += packet
+            next_address, onion = tools.peel_address(message, self.private_key)
 
-            # If we did receive the onion
-            if message != b'':
+            if next_address is None:
+                print(f"Message received at {self.address} : {onion.decode('utf-8')}")
+                break
 
-                next_address, onion = message_tool.peel_address(message, self.private_key)
+            next_node = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            next_node.bind((self.address[0], self.address[1] + port_dictionary["forwarding"]))
+            next_node.connect((next_address[0], next_address[1] + port_dictionary["peering"]))
+            next_node.send(onion)
+            print("sending")
 
-                print("Next address : " + str(next_address))
-                print("Next message : " + str(onion))
-                next_node.send(onion)
-
-
-    def backward_loop(self, previous_node, next_node):
-        while True:
-            # Receive message (could be longer than 2048, need to concat)
-            while True:
-                packet = next_node.recv(2048)
-                if not packet:
-                    break
-                signature = self.sign(packet)
-                message = signature + packet
-                previous_node.send(message)
             return
 
     def sign(self, packet):
