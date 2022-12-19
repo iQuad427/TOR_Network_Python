@@ -42,10 +42,9 @@ class Node:
         self.path = []
         self.free_port = 5000
         self.backwarding_sockets = []
-        self.ports = []
         self.dict_address_to_portsocket = {(own_address[0], 4999): [4999]
                                            }
-        self.servers = []
+        self.sockets = []
         self.dict_port_to_address = {4999: (own_address[0], 4999)
                                        }
         self.dict_socket_to_address = {4999: (own_address[0], 4999)
@@ -100,10 +99,21 @@ class Node:
 
         next_address, onion = tools.peel_address(onion, private_key=None)
 
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            sock.bind((self.address[0], self.address[1] + port_dictionary["sending"]))
-            sock.connect((next_address[0], next_address[1] + 1))
-            sock.send(onion)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.bind((self.address[0], self.address[1] + port_dictionary["sending"]))
+        sock.connect((next_address[0], next_address[1] + 1))
+        sock.send(onion)
+        sock.close()
+        self.dict_address_to_portsocket[self.address] = [self.free_port]
+        self.dict_port_to_address[self.free_port] = self.address
+        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server.bind((self.address[0], self.free_port))
+        server.listen(1)
+        self.sockets.append(server)
+        self.dict_address_to_portsocket[self.address].append(server)
+        self.dict_socket_to_address[server] = self.address
+        self.free_port += 1
 
     def start(self):
         threading.Thread(target=self.start_listening).start()
@@ -170,27 +180,17 @@ class Node:
             next_node.connect((next_address[0], next_address[1] + port_dictionary["peering"]))
             next_node.send(onion)
             next_node.close()
-            self.ports.append(self.free_port)
+
             self.dict_address_to_portsocket[address] = [self.free_port]
             self.dict_port_to_address[self.free_port] = address
-
-            ds = (self.address[0], self.free_port)
             server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            server.bind(ds)
+            server.bind((self.address[0], self.free_port))
             server.listen(1)
-            self.servers.append(server)
+            self.sockets.append(server)
             self.dict_address_to_portsocket[address].append(server)
             self.dict_socket_to_address[server] = address
             self.free_port += 1
-            # threading.Thread(target=self.backwarding, args=(previous_node, next_node,)).start()
-            # threading.Thread(target=self.backward).start()
-            # threading.Thread(target=self.forward_loop, args=(previous_node, next_node)).start()
-            # backward_thread = threading.Thread(target=self.backward_loop, args=(previous_node, next_node,))
-            # forward_thread.start()
-            # backward_thread.start()
-            # forward_thread.join()
-            # backward_thread.join()
             return
         # threading.Thread(target=self.backward).start()
 
@@ -213,28 +213,14 @@ class Node:
                 to_remove.append(i)
             for i in to_remove:
                 self.to_backward.remove(i)
-    def update_sockets(self):
-        while True:
-            #print("hello")
-            try:
-                for address in self.dict_address_to_portsocket.keys():
-                    ds = (self.address[0], self.dict_address_to_portsocket[address][0])
-                    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                    server.bind(ds)
-                    server.listen(1)
-                    self.servers.append(server)
-                    self.dict_address_to_portsocket[address].append(server)
-                    self.dict_socket_to_address[server] = address
-            except RuntimeError:
-                print("yes")
+
 
     def listen_backward(self):
 
         while True:
-            if self.servers:
-                print(self.servers)
-                readable, _, _ = select.select(self.servers, [], [])
+            if self.sockets:
+                print(self.sockets)
+                readable, _, _ = select.select(self.sockets, [], [])
                 ready_server = readable[0]
                 print("heeeeeeeeeeeeeeeere", ready_server)
                 connection, address = ready_server.accept()
@@ -245,7 +231,13 @@ class Node:
                           f"From : ({address[0]}, {address[1]})")
 
                     connection.send(message.encode())
-                    self.to_backward.append((self.dict_socket_to_address[ready_server], message.encode()))
+                    print("I received a response to my message", message)
+                    print(self.dict_socket_to_address[ready_server], self.address)
+
+                    if self.dict_socket_to_address[ready_server] == self.address:
+                        print("I received a response to my message", message)
+                    else:
+                        self.to_backward.append((self.dict_socket_to_address[ready_server], message.encode()))
 
     def backwarding(self, previous_node, next_node):
         # Receive message (could be longer than 2048, need to concat)
@@ -273,7 +265,7 @@ class Node:
 
             # If we did receive the onion
             if message != b'':
-                next_address, onion = message_tool.peel_address(message, self.private_key)
+                next_address, onion = tools.peel_address(message, self.private_key)
 
                 print("Next address : " + str(next_address))
                 print("Next message : " + str(onion))
