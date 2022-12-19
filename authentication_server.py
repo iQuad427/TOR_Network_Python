@@ -7,7 +7,7 @@ import rsa
 
 
 # Create a socket to listen for incoming connections
-import message_tool
+import tools
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 sock.bind(("127.1.1.1", 4000))
@@ -28,13 +28,13 @@ while True:
     username = conn.recv(2048)
 
     conn.send("Password".encode())
-    password = hashlib.sha256(message_tool.decrypt(conn.recv(2048), private_key)).hexdigest()
+    password = hashlib.sha256(tools.decrypt(conn.recv(2048), private_key)).hexdigest()
     print(response)
     print(username)
     print(password)
     if response == "Signup":
         conn.send("Password".encode())
-        password_confirmation = hashlib.sha256(message_tool.decrypt(conn.recv(2048), private_key)).hexdigest()
+        password_confirmation = hashlib.sha256(tools.decrypt(conn.recv(2048), private_key)).hexdigest()
         print(password_confirmation)
         if password == password_confirmation:
             dict_credentials[username] = password

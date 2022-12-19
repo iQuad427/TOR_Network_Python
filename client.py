@@ -5,6 +5,8 @@ import socket
 import threading
 import time
 import rsa
+import select
+
 import tools
 from phonebook import Phonebook
 
@@ -28,7 +30,7 @@ port_dictionary = {
 
 
 class Node:
-    backwarding_sockets = []
+
     def __init__(self, own_address):
         self.public_key = 0
         self.private_key = 0
@@ -39,6 +41,16 @@ class Node:
         self.exit = set()
         self.path = []
         self.free_port = 5000
+        self.backwarding_sockets = []
+        self.ports = []
+        self.dict_address_to_portsocket = {(own_address[0], 4999): [4999]
+                                           }
+        self.servers = []
+        self.dict_port_to_address = {4999: (own_address[0], 4999)
+                                       }
+        self.dict_socket_to_address = {4999: (own_address[0], 4999)
+                                       }
+        self.to_backward = []
 
     def init_node_as_relay(self):
         self.start()
@@ -95,6 +107,7 @@ class Node:
 
     def start(self):
         threading.Thread(target=self.start_listening).start()
+        # threading.Thread(target=self.backward).start()
         threading.Thread(target=self.start_forwarding).start()
 
     def start_listening(self):
@@ -104,18 +117,20 @@ class Node:
 
             while True:
                 connection, address = sock.accept()
-                print(f"{self.address} accepted connection with: {address}")
+                #print(f"{self.address} accepted connection with: {address}")
 
                 with connection:
                     message = connection.recv(2048)
                     message = pickle.loads(message)
-                    print(f"received: {message}")
+                    #print(f"received: {message}")
                     if message == "phonebook":
                         connection.send(pickle.dumps(self.phonebook.get_contact_list()))
                     elif message == "public_key":
                         if type(self.public_key) is not rsa.PublicKey:
                             self.init_keys()
                         connection.send(pickle.dumps(self.public_key))
+                    elif type(message) is rsa.PublicKey:
+                        self.phonebook[(address[0], address[1])] = [message, False]
 
     def start_forwarding(self):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
@@ -142,18 +157,153 @@ class Node:
                 return
 
             next_address, onion = tools.peel_address(message, self.private_key)
+            print("Next address : " + str(next_address))
+            print("Next message : " + str(onion))
 
             if next_address is None:
                 print(f"Message received at {self.address} : {onion.decode('utf-8')}")
                 break
 
             next_node = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            next_node.bind((self.address[0], self.address[1] + port_dictionary["forwarding"]))
+            next_node.bind((self.address[0], self.free_port))
+
             next_node.connect((next_address[0], next_address[1] + port_dictionary["peering"]))
             next_node.send(onion)
-            print("sending")
+            next_node.close()
+            self.ports.append(self.free_port)
+            self.dict_address_to_portsocket[address] = [self.free_port]
+            self.dict_port_to_address[self.free_port] = address
 
+            ds = (self.address[0], self.free_port)
+            server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            server.bind(ds)
+            server.listen(1)
+            self.servers.append(server)
+            self.dict_address_to_portsocket[address].append(server)
+            self.dict_socket_to_address[server] = address
+            self.free_port += 1
+            # threading.Thread(target=self.backwarding, args=(previous_node, next_node,)).start()
+            # threading.Thread(target=self.backward).start()
+            # threading.Thread(target=self.forward_loop, args=(previous_node, next_node)).start()
+            # backward_thread = threading.Thread(target=self.backward_loop, args=(previous_node, next_node,))
+            # forward_thread.start()
+            # backward_thread.start()
+            # forward_thread.join()
+            # backward_thread.join()
             return
+        # threading.Thread(target=self.backward).start()
+
+    def start_listen_backward(self):
+        #threading.Thread(target=self.update_sockets).start()
+        threading.Thread(target=self.listen_backward).start()
+        threading.Thread(target=self.start_sending_backward).start()
+
+    def start_sending_backward(self):
+        while True:
+            to_remove = []
+            for i in self.to_backward:
+                print(i)
+                next_node = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                # next_node.bind((self.address[0], self.free_port))
+                print("là fréro", (i[0][0], i[0][1]))
+                next_node.connect((i[0][0], i[0][1]))
+                next_node.send(i[1])
+                next_node.close()
+                to_remove.append(i)
+            for i in to_remove:
+                self.to_backward.remove(i)
+    def update_sockets(self):
+        while True:
+            #print("hello")
+            try:
+                for address in self.dict_address_to_portsocket.keys():
+                    ds = (self.address[0], self.dict_address_to_portsocket[address][0])
+                    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                    server.bind(ds)
+                    server.listen(1)
+                    self.servers.append(server)
+                    self.dict_address_to_portsocket[address].append(server)
+                    self.dict_socket_to_address[server] = address
+            except RuntimeError:
+                print("yes")
+
+    def listen_backward(self):
+
+        while True:
+            if self.servers:
+                print(self.servers)
+                readable, _, _ = select.select(self.servers, [], [])
+                ready_server = readable[0]
+                print("heeeeeeeeeeeeeeeere", ready_server)
+                connection, address = ready_server.accept()
+                with connection:
+                    message = connection.recv(2048)
+                    message = message.decode()
+                    print(f"Message received : {message}\n"
+                          f"From : ({address[0]}, {address[1]})")
+
+                    connection.send(message.encode())
+                    self.to_backward.append((self.dict_socket_to_address[ready_server], message.encode()))
+
+    def backwarding(self, previous_node, next_node):
+        # Receive message (could be longer than 2048, need to concat)
+
+        while True:
+            packet = next_node.recv(2048)
+            if not packet:
+                break
+            if packet:
+                signature = self.sign(packet)
+                message = signature + packet
+                previous_node.send(message)
+
+    def forward_loop(self, previous_node, next_node):
+
+        while True:
+            # Receive message (could be longer than 2048, need to concat)
+            message = b''
+            while True:
+                print("xd")
+                packet = previous_node.recv(2048)
+                if not packet:
+                    break
+                message += packet
+
+            # If we did receive the onion
+            if message != b'':
+                next_address, onion = message_tool.peel_address(message, self.private_key)
+
+                print("Next address : " + str(next_address))
+                print("Next message : " + str(onion))
+                next_node.send(onion)
+
+    def backward(self):
+        i = 0
+        while True:
+            time.sleep(1)
+            i += 1
+        # with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        #     sock.bind((self.address[0], self.address[1]+502))
+        #     sock.listen()
+        #
+        #     while True:
+        #         connection, address = sock.accept()
+        #         # print(f"{self.address} accepted connection with: {address}")
+        #
+        #         with connection:
+        #             message = connection.recv(2048)
+        #             message = pickle.loads(message)
+        #             # print(f"received: {message}")
+        #             if message == "phonebook":
+        #                 connection.send(pickle.dumps(self.phonebook))
+        #             elif message == "public_key":
+        #                 if type(self.public_key) is not rsa.PublicKey:
+        #                     self.init_keys()
+        #                 connection.send(pickle.dumps(self.public_key))
+        #             elif type(message) is rsa.PublicKey:
+        #                 self.phonebook[(address[0], address[1])] = [message, False]
 
     def sign(self, packet):
         return rsa.sign(packet, self.private_key, 'SHA-256')
