@@ -214,9 +214,7 @@ class Node:
             for i in to_remove:
                 self.to_backward.remove(i)
 
-
     def listen_backward(self):
-
         while True:
             if self.sockets:
                 print(self.sockets)
@@ -270,32 +268,6 @@ class Node:
                 print("Next address : " + str(next_address))
                 print("Next message : " + str(onion))
                 next_node.send(onion)
-
-    def backward(self):
-        i = 0
-        while True:
-            time.sleep(1)
-            i += 1
-        # with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        #     sock.bind((self.address[0], self.address[1]+502))
-        #     sock.listen()
-        #
-        #     while True:
-        #         connection, address = sock.accept()
-        #         # print(f"{self.address} accepted connection with: {address}")
-        #
-        #         with connection:
-        #             message = connection.recv(2048)
-        #             message = pickle.loads(message)
-        #             # print(f"received: {message}")
-        #             if message == "phonebook":
-        #                 connection.send(pickle.dumps(self.phonebook))
-        #             elif message == "public_key":
-        #                 if type(self.public_key) is not rsa.PublicKey:
-        #                     self.init_keys()
-        #                 connection.send(pickle.dumps(self.public_key))
-        #             elif type(message) is rsa.PublicKey:
-        #                 self.phonebook[(address[0], address[1])] = [message, False]
 
     def sign(self, packet):
         return rsa.sign(packet, self.private_key, 'SHA-256')

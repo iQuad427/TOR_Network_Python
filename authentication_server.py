@@ -1,49 +1,78 @@
 import hashlib
 import pickle
-import random
 import socket
-
 import rsa
+from Crypto.Cipher import AES
 
-
-# Create a socket to listen for incoming connections
 import tools
 
-sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-sock.bind(("127.1.1.1", 4000))
-sock.listen(1)
-dict_credentials = dict()
+# Topology of received messages : username:#request:code
+
+# username : log, password
+user_credentials = dict()
 public_key, private_key = rsa.newkeys(1024)
-while True:
-    # Accept an incoming connection
-    conn, addr = sock.accept()
-    print("Received connection from", addr)
 
-    # Receive the response from the client
-    conn.recv(2048)
-    conn.send(pickle.dumps(public_key))
-    response = conn.recv(2048)
-    response = response.decode()
-    conn.send("Username".encode())
-    username = conn.recv(2048)
 
-    conn.send("Password".encode())
-    password = hashlib.sha256(tools.decrypt(conn.recv(2048), private_key)).hexdigest()
-    print(response)
-    print(username)
-    print(password)
-    if response == "Signup":
-        conn.send("Password".encode())
-        password_confirmation = hashlib.sha256(tools.decrypt(conn.recv(2048), private_key)).hexdigest()
-        print(password_confirmation)
-        if password == password_confirmation:
-            dict_credentials[username] = password
-            conn.send("Successfully signed up".encode())
-    elif response == "Signin":
-        if username not in dict_credentials.keys():
-            conn.send("Login failed; Invalid user ID or password".encode())
-        elif password != dict_credentials[username]:
-            conn.send("Login failed; Invalid user ID or password".encode())
-        else:
-            conn.send("Successfully connected".encode())
-    conn.close()
+def parsing(plaintext_message):
+    pos = [None, None]
+    number = 0
+    for i in range(len(message)):
+        # 58 = utf8 of :
+        if message[i] == 58:
+            pos[number] = i
+            number += 1
+            if number == 2:
+                break
+
+    if pos[0] is None or pos[1] is None:
+        return None, None, None
+
+    user = message[:pos[0]].decode('utf-8')
+    query = message[pos[0]+1:pos[1]].decode('utf-8')
+    rest = message[pos[1]+1:]
+
+    return user, query, rest
+
+
+def verif_challenge(user, response):
+    password = user_credentials[user][1]
+    cipher = AES.new(password, AES.MODE_CTR, nonce=b'1')
+    actual = cipher.encrypt(format_challenge(user))
+
+    return response == actual
+
+
+def format_challenge(user):
+    return bytes("new_challenger_" + user, 'utf-8')
+
+
+if __name__ == '__main__':
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.bind(("127.0.0.5", 10000))
+
+    while True:
+        conn, addr = sock.accept()
+
+        message = sock.recv(2048)
+        if message.decode('utf-8') == "public_key":
+            conn.send(pickle.dumps(public_key))
+            conn.close()
+            break
+
+        username, request, code = parsing(tools.decrypt(message, private_key))
+
+        if request == "sign_up":
+            if username not in user_credentials:
+                user_credentials[username] = [0, code]
+        elif request == "sign_in":
+            if username in user_credentials and user_credentials[username][0] == 0:
+                user_credentials[username][0] = 1
+                sock.send(format_challenge(username))
+        elif request == "challenge":
+            if username in user_credentials and user_credentials[username][0] == 1:
+                if verif_challenge(username, code):
+                    sock.send("Authentication succeeded")
+                else:
+                    sock.send("Authentication failed")
+
+        conn.close()
