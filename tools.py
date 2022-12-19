@@ -55,7 +55,7 @@ def encrypt_path(packet, path):
     packaging_order = copy.deepcopy(path)
     packaging_order.reverse()
     for node in packaging_order:
-        #print(node[1][0])
+        # print(node[1][0])
         encrypted_packet = encrypt(encrypted_packet, node[1][0])
         encrypted_packet = bytes(str(node[0]), 'utf-8') + bytes(":", 'utf-8') + encrypted_packet
 
@@ -81,7 +81,7 @@ def peel_address(onion, private_key=None):
 
     next_address, next_onion = None, b''
     if pos != 0:
-        next_address = eval( )
+        next_address = eval(onion[:pos])
         next_onion = onion[(pos + 1):]
     else:
         next_onion = onion

@@ -7,6 +7,8 @@ import time
 import rsa
 import select
 
+from Crypto.Cipher import AES
+
 import tools
 from phonebook import Phonebook
 
@@ -18,6 +20,8 @@ starting_phonebook = {
     ("127.0.0.3", 4000): ["east_node", False],
     ("127.0.0.4", 4000): ["south_node", False],
 }
+
+authentication_server = ("127.0.0.5", 10000)
 
 port_dictionary = {
     "listening":    0,
@@ -88,8 +92,6 @@ class Node:
     def send(self, message):
         """
         Send a packet after onioning it
-        :param message:
-        :return:
         """
         self.set_path()
         print(f"Path : {self.path}")
@@ -101,9 +103,10 @@ class Node:
 
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.bind((self.address[0], self.address[1] + port_dictionary["sending"]))
-        sock.connect((next_address[0], next_address[1] + 1))
+        sock.connect((next_address[0], next_address[1] + port_dictionary["peering"]))
         sock.send(onion)
         sock.close()
+
         self.dict_address_to_portsocket[self.address] = [self.free_port]
         self.dict_port_to_address[self.free_port] = self.address
         server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -127,12 +130,12 @@ class Node:
 
             while True:
                 connection, address = sock.accept()
-                #print(f"{self.address} accepted connection with: {address}")
+                # print(f"{self.address} accepted connection with: {address}")
 
                 with connection:
                     message = connection.recv(2048)
                     message = pickle.loads(message)
-                    #print(f"received: {message}")
+                    # print(f"received: {message}")
                     if message == "phonebook":
                         connection.send(pickle.dumps(self.phonebook.get_contact_list()))
                     elif message == "public_key":
@@ -195,7 +198,7 @@ class Node:
         # threading.Thread(target=self.backward).start()
 
     def start_listen_backward(self):
-        #threading.Thread(target=self.update_sockets).start()
+        # threading.Thread(target=self.update_sockets).start()
         threading.Thread(target=self.listen_backward).start()
         threading.Thread(target=self.start_sending_backward).start()
 
@@ -280,41 +283,53 @@ class Node:
             sock.connect((address[0], address[1] + port_dictionary["backwarding"]))
             sock.send(new_packet)
 
-    def signup_to_authentication_server(self):
+    def sign_up(self):
+        print("sign up")
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            sock.connect(("127.1.1.1", 4000))
-            sock.send("Give me your public key".encode())
+            sock.connect(authentication_server)
+            print("request public key")
+            sock.send("0:public_key".encode('utf-8'))
             public_key = sock.recv(2048)
-            public_key = pickle.loads(public_key)
-            sock.send("Signup".encode())
-            if sock.recv(2048).decode() == "Username":
-                sock.send(self.address[0].encode())
-            else:
-                print("error")
-            if sock.recv(2048).decode() == "Password":
-                sock.send(tools.encrypt("postgres".encode(), public_key))
-            else:
-                print("error")
-            if sock.recv(2048).decode() == "Password":
-                sock.send(tools.encrypt("postgres".encode(), public_key))
-            else:
-                print("error")
-            print(f"Received message from server : {sock.recv(2048).decode()}")
 
-    def signin_to_authentication_server(self):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            sock.connect(("127.1.1.1", 4000))
-            sock.send("Give me your public key".encode())
-            public_key = sock.recv(2048)
-            public_key = pickle.loads(public_key)
-            sock.send("Signin".encode())
-            if sock.recv(2048).decode() == "Username":
-                sock.send(self.address[0].encode())
-            else:
-                print("error")
-            if sock.recv(2048).decode() == "Password":
-                sock.send(tools.encrypt("postgres".encode(), public_key))
-            else:
-                print("error")
-            print(f"Received message from server : {sock.recv(2048).decode()}")
+            sock.connect(authentication_server)
+            sock.send("1:username:sign_up:hashed_password_0000000000000000".encode('utf-8'))
+            print("Sign up status :", sock.recv(2048).decode('utf-8'))
 
+    def sign_in(self):
+        print("sign in")
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.connect(authentication_server)
+            print("request public key")
+            sock.send("1:public_key".encode('utf-8'))
+            public_key = sock.recv(2048)
+
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.connect(authentication_server)
+            sock.send("1:username:sign_in:nothing".encode('utf-8'))
+            challenge = sock.recv(2048)
+
+            print("challenge :", challenge)
+
+            if challenge[:9].decode('utf-8') != "challenge":
+                print("Sign in failed")
+                return
+            else:
+                challenge = challenge[9 + 1:]
+                print("true challenge :", challenge)
+
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.connect(authentication_server)
+
+            print("responding to challenge")
+
+            password = "hashed_password_0000000000000000".encode()
+            cipher = AES.new(password, AES.MODE_CTR, nonce=b'1')
+            actual = cipher.encrypt(challenge)
+
+            print(actual)
+            print("challenge:".encode())
+            print("challenge:".encode() + actual)
+
+            sock.send("0:username:challenge:".encode() + actual)
+            print("Sign in status :", sock.recv(2048).decode('utf-8'))

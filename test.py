@@ -19,10 +19,15 @@ def start_network():
 
     south_node = client.Node(starting_nodes[3])
     south_node.init_node_as_relay()
-    west_node.start_listen_backward()
-    north_node.start_listen_backward()
-    east_node.start_listen_backward()
-    south_node.start_listen_backward()
+
+    south_node.sign_up()
+    south_node.sign_in()
+
+    # west_node.start_listen_backward()
+    # north_node.start_listen_backward()
+    # east_node.start_listen_backward()
+    # south_node.start_listen_backward()
+
     # south_node.signup_to_authentication_server()
     # south_node.signin_to_authentication_server()
 
@@ -120,7 +125,7 @@ def test_forwarding():
 
 if __name__ == '__main__':
     start_network()
-    #test_phonebook()
-    test_forwarding()
+    # test_phonebook()
+    # test_forwarding()
 
 
