@@ -6,6 +6,56 @@ import pickle
 import socket
 
 
+def format_message(username, query, content, to_decode=True):
+    """
+    Creates a formatted challenge from the username that is getting challenged
+
+    :param username: the username of the user getting challenged
+    :param query: the request made to the server
+    :param content: the content required by the server to compute the request
+    :param to_decode: should the content be decoded when receiving the message (typically a hash should not)
+
+    :return: a formatted byte string representing the whole query made to the server
+    """
+    formatted = f"{1 if to_decode else 0}:{username}:{query}:".encode('utf-8')
+    return formatted + (f"{content}".encode('utf-8') if to_decode else content)
+
+
+def parsing(argv):
+    """
+    Parse the argument and retrieve the values separated by the token ":"
+    Note :
+        - the expected message topology is "to_decode:username:query:content"
+        - none of the parts of the message should be left blank
+        - the parsing only occurs for the 2 first splitting tokens, allowing for ":" in content
+
+    :param argv: the message after preprocessing (i.e. : "username:query:content")
+    :return: username, query, content
+    """
+    print(argv)
+    if argv[1] != b':'[0]:
+        return None, None, None
+
+    to_decode = argv[0] - 48  # 48 is the value of 0 in ASCII -> returns an int corresponding to the string value
+    argv = argv[2:]
+
+    pos = [None, None]
+    number = 0
+    for i in range(len(argv)):
+        # 58 = utf8 of :
+        if argv[i] == 58:
+            pos[number] = i
+            number += 1
+            if number == 2:
+                break
+
+    if pos[0] is None or pos[1] is None:
+        return None, None, None
+
+    return argv[:pos[0]].decode('utf-8'), argv[pos[0] + 1:pos[1]].decode('utf-8'), \
+           (argv[pos[1] + 1:].decode('utf-8') if to_decode else argv[pos[1] + 1:])
+
+
 def generate_onion(message, node_path):
     packaging_order = copy.deepcopy(node_path)
     packaging_order.reverse()

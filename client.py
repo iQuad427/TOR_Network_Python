@@ -288,12 +288,14 @@ class Node:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
             sock.connect(authentication_server)
             print("request public key")
-            sock.send("0:public_key".encode('utf-8'))
+            sock.send(tools.format_message("username", "public_key", "void"))
             public_key = sock.recv(2048)
+
+        self.send(tools.format_message("username", "public_key", "void"))
 
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
             sock.connect(authentication_server)
-            sock.send("1:username:sign_up:hashed_password_0000000000000000".encode('utf-8'))
+            sock.send(tools.format_message("username", "sign_up", "hashed_password_0000000000000000", to_decode=False))
             print("Sign up status :", sock.recv(2048).decode('utf-8'))
 
     def sign_in(self):
@@ -301,22 +303,23 @@ class Node:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
             sock.connect(authentication_server)
             print("request public key")
-            sock.send("1:public_key".encode('utf-8'))
+            sock.send(tools.format_message("username", "public_key", "void"))
             public_key = sock.recv(2048)
 
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
             sock.connect(authentication_server)
-            sock.send("1:username:sign_in:nothing".encode('utf-8'))
-            challenge = sock.recv(2048)
+            sock.send(tools.format_message("username", "sign_in", "void"))
+            message = sock.recv(2048)
 
-            print("challenge :", challenge)
+            print("challenge message :", message)
 
-            if challenge[:9].decode('utf-8') != "challenge":
+            user, request, challenge = tools.parsing(message)
+
+            print(user, request, challenge)
+
+            if request != "challenge":
                 print("Sign in failed")
                 return
-            else:
-                challenge = challenge[9 + 1:]
-                print("true challenge :", challenge)
 
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
             sock.connect(authentication_server)
@@ -325,11 +328,12 @@ class Node:
 
             password = "hashed_password_0000000000000000".encode()
             cipher = AES.new(password, AES.MODE_CTR, nonce=b'1')
-            actual = cipher.encrypt(challenge)
+            actual = cipher.encrypt(challenge.encode('utf-8'))
 
-            print(actual)
-            print("challenge:".encode())
-            print("challenge:".encode() + actual)
+            sock.send(tools.format_message("username", "challenge", actual, to_decode=False))
 
-            sock.send("0:username:challenge:".encode() + actual)
-            print("Sign in status :", sock.recv(2048).decode('utf-8'))
+            server_response = sock.recv(2048)
+            user, query, content = tools.parsing(server_response)
+
+            if query == "log":
+                print("Sign in status :", content)

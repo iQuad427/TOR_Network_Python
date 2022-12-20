@@ -3,51 +3,41 @@ import pickle
 import socket
 import rsa
 from Crypto.Cipher import AES
-
 import tools
 
 # Topology of received messages : username:#request:code
+
+STATUS_INDEX = 0
+COUNTER_INDEX = 1
+PASSWORD_INDEX = 2
 
 # username : log, password
 user_credentials = dict()
 public_key, private_key = rsa.newkeys(1024)
 
 
-def parsing(plaintext_message):
-    pos = [None, None]
-    number = 0
-    for i in range(len(plaintext_message)):
-        # 58 = utf8 of :
-        if plaintext_message[i] == 58:
-            pos[number] = i
-            number += 1
-            if number == 2:
-                break
-
-    if pos[0] is None or pos[1] is None:
-        return None, None, None
-
-    user = plaintext_message[:pos[0]].decode('utf-8')
-    query = plaintext_message[pos[0]+1:pos[1]].decode('utf-8')
-    rest = plaintext_message[pos[1]+1:]
-
-    return user, query, rest
-
-
-def verif_challenge(user, response):
-    password = user_credentials[user][1]
+def verif_challenge(username, user_response):
+    password = user_credentials[username][PASSWORD_INDEX]
     cipher = AES.new(password, AES.MODE_CTR, nonce=b'1')
-    actual = cipher.encrypt(format_challenge(user))
+    actual = cipher.encrypt(format_challenge(username))
 
-    print("server password :", password)
-    print("response :", response)
+    print("response :", user_response)
     print("actual :", actual)
 
-    return response == actual
+    return user_response == actual
 
 
-def format_challenge(user):
-    return bytes("new_challenger_" + user, 'utf-8')
+def format_challenge(username, to_encode=True):
+    """
+    Creates a formatted challenge from the username that is getting challenged
+
+    :param username: the username getting challenged
+    :param to_encode: whether the output should be bytes or a string
+
+    :return: return a formatted challenge for the user given as argument
+    """
+    formatted = f"new_challenger_{username}_{str(user_credentials[username][1])}"
+    return formatted.encode('utf-8') if to_encode else formatted
 
 
 if __name__ == '__main__':
@@ -63,44 +53,42 @@ if __name__ == '__main__':
         print("accepted a connection")
 
         message = conn.recv(2048)
-        print(message, message[0])
 
-        # j'ai mis un 0 en début de message quand il ne faut pas le décoder
-        # par exemple, une encryption ne peut pas être décodée, ça throw une error
-        if message[0] == 49 and message[1] == 58:
-            if message.decode('utf-8') == "public_key":
-                print("was asked for public_key")
-                conn.send(pickle.dumps(public_key))
-                conn.close()
-        elif message[0] == 48 and message[1] == 58:
-            print(message[2:])
+        user, query, content = tools.parsing(message)
 
-        username, request, code = parsing(message[2:])
+        if user is None:
+            conn.send(tools.format_message("server", "log", "Error : Message badly formed"))
 
-        print(username, request, code)
+        print(user, query, content)
 
-        if request == "sign_up":
+        if query == "public_key":
+            print("was asked for public_key")
+            conn.send(pickle.dumps(public_key))
+            conn.close()
+        elif query == "sign_up":
             print("sign up requested")
-            if username not in user_credentials:
-                user_credentials[username] = [0, code]
-                conn.send("Sign up succeeded".encode('utf-8'))
+            if user not in user_credentials:
+                user_credentials[user] = [0, 0, content]
+                conn.send(tools.format_message("server", "log", "Log : sign up succeeded"))
             else:
-                conn.send("Sign up failed".encode('utf-8'))
-        elif request == "sign_in":
+                conn.send(tools.format_message("server", "log", "Error : sign up failed"))
+        elif query == "sign_in":
             print("sign in requested")
-            if username in user_credentials and user_credentials[username][0] == 0:
-                user_credentials[username][0] = 1
-                conn.send("challenge:".encode('utf-8') + format_challenge(username))
+            if user in user_credentials and user_credentials[user][STATUS_INDEX] == 0:
+                user_credentials[user][STATUS_INDEX] = 1
+                user_credentials[user][COUNTER_INDEX] += 1
+                conn.send(tools.format_message("server", "challenge", format_challenge(user, False)))
+                print("challenge sent")
             else:
-                conn.send("Sign in aborted".encode('utf-8'))
-        elif request == "challenge":
+                conn.send(tools.format_message("server", "log", "Error : sign in aborted"))
+        elif query == "challenge":
             print("challenge answered")
-            if username in user_credentials and user_credentials[username][0] == 1:
+            if user in user_credentials and user_credentials[user][STATUS_INDEX] == 1:
                 print("verifying challenge")
-                if verif_challenge(username, code):
-                    user_credentials[username][0] = 2
-                    conn.send("Authentication succeeded".encode('utf-8'))
+                if verif_challenge(user, content):
+                    user_credentials[user][STATUS_INDEX] = 2
+                    conn.send(tools.format_message("server", "log", "Log : authentication succeeded"))
                 else:
-                    conn.send("Authentication failed".encode('utf-8'))
+                    conn.send(tools.format_message("server", "log", "Error : authentication failed"))
 
         conn.close()
