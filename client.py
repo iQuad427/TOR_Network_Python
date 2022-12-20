@@ -49,8 +49,6 @@ class Node:
         self.dict_address_to_portsocket = {(own_address[0], 4999): [4999]
                                            }
         self.sockets = []
-        self.dict_port_to_address = {4999: (own_address[0], 4999)
-                                       }
         self.dict_socket_to_address = {4999: (own_address[0], 4999)
                                        }
         self.to_backward = []
@@ -101,21 +99,23 @@ class Node:
 
         next_address, onion = tools.peel_address(onion, private_key=None)
 
+        # Sending to the next node the onion
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.bind((self.address[0], self.address[1] + port_dictionary["sending"]))
+        sock.bind((self.address[0], self.free_port))
         sock.connect((next_address[0], next_address[1] + port_dictionary["peering"]))
         sock.send(onion)
         sock.close()
 
-        self.dict_address_to_portsocket[self.address] = [self.free_port]
-        self.dict_port_to_address[self.free_port] = self.address
+        self.dict_address_to_portsocket[self.address] = [self.free_port] # Saving the port from which we send the onion
+        # Creating a socket that will listen on the same port from which we sent the onion to be able to get responses
         server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         server.bind((self.address[0], self.free_port))
         server.listen(1)
         self.sockets.append(server)
-        self.dict_address_to_portsocket[self.address].append(server)
-        self.dict_socket_to_address[server] = self.address
+        self.dict_address_to_portsocket[self.address].append(server)    # Creating a socket and add it to listening_backward loop
+        self.dict_socket_to_address[server] = self.address   # Adding the address to which the socket will backward the received onions
+                                                             # The address of the client because it's the original sender and he will not backward it
         self.free_port += 1
 
     def start(self):
@@ -184,27 +184,35 @@ class Node:
             next_node.send(onion)
             next_node.close()
 
-            self.dict_address_to_portsocket[address] = [self.free_port]
-            self.dict_port_to_address[self.free_port] = address
+            self.dict_address_to_portsocket[address] = [self.free_port] # Saving the port from which we send the onion
+            # Creating a socket that will listen on the same port from which we sent the onion to be able to get responses
             server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             server.bind((self.address[0], self.free_port))
             server.listen(1)
             self.sockets.append(server)
-            self.dict_address_to_portsocket[address].append(server)
-            self.dict_socket_to_address[server] = address
+            self.dict_address_to_portsocket[address].append(server) # Creating a socket and add it to listening_backward loop
+            self.dict_socket_to_address[server] = address   # Adding the address to which the socket will backward the received onions
             self.free_port += 1
             return
         # threading.Thread(target=self.backward).start()
 
     def start_listen_backward(self):
+        """
+        Launching two threads to listen from responses for the onions that we sent and send them back
+        """
         # threading.Thread(target=self.update_sockets).start()
         threading.Thread(target=self.listen_backward).start()
         threading.Thread(target=self.start_sending_backward).start()
 
     def start_sending_backward(self):
+        """
+        Loop to send back the responses received for the forwarded onions
+        """
         while True:
             to_remove = []
+            if self.to_backward != []:
+                print("sent_to_backward", self.to_backward)
             for i in self.to_backward:
                 print(i)
                 next_node = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -218,6 +226,11 @@ class Node:
                 self.to_backward.remove(i)
 
     def listen_backward(self):
+        """
+        Loop listening on all the ports that were used to forward onions.
+        Adds received messages and the address to which send back to a list
+        :return:
+        """
         while True:
             if self.sockets:
                 print(self.sockets)
