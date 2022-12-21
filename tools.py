@@ -62,7 +62,7 @@ def format_send_to(address, message):
     return f"{address}:send:".encode('utf-8') + message
 
 
-def hash_password_to_aes_key(password):
+def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest().encode()[:32]
 
 
