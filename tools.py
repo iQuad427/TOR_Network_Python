@@ -112,9 +112,7 @@ def encrypt_path(packet, path):
     :return:
     """
     encrypted_packet = packet
-    packaging_order = copy.deepcopy(path)
-    packaging_order.reverse()
-    for node in packaging_order:
+    for node in path[::-1]:
         # print(node[1][0])
         encrypted_packet = encrypt(encrypted_packet, node[1][0])
         encrypted_packet = bytes(str(node[0]), 'utf-8') + bytes(":", 'utf-8') + encrypted_packet
@@ -176,3 +174,16 @@ def send_encrypted_packet(self, packet, public_key):
         # sock.bind((self.address[0], self.address[1] + 2))
         sock.connect(self.path[0][0])
         sock.send(pickle.dumps(encrypted_packet))
+
+
+def sign(packet, private_key):
+    return rsa.sign(packet, private_key, 'SHA-256') + packet
+
+
+def verify_sign(packet, path):
+    verified_packet = packet
+    for node in path[:-1]:  # last of path is the exit node (no signature)
+        # print(node[1][0])
+        rsa.verify(verified_packet[128:], verified_packet[:128], node[1][0])
+        verified_packet = verified_packet[128:]
+    return verified_packet

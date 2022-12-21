@@ -266,7 +266,10 @@ class Node:
                 next_node = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 # next_node.bind((self.address[0], self.free_port))
                 next_node.connect((address[0][0], address[0][1]))
-                next_node.send(address[1])
+                # next_node.send(address[1])
+                print("Voilà le contrat")
+                next_node.send(tools.sign(address[1], self.private_key))
+                print("C'est signé")
                 next_node.close()
                 to_remove.append(address)
             for address in to_remove:
@@ -296,9 +299,6 @@ class Node:
                         print(self.dict_socket_to_address[ready_server], self.address)
                         if self.dict_socket_to_address[ready_server] == self.address:
                             print("Returned to sender")
-                            self.recv_buffer.append(message)
+                            self.recv_buffer.append(tools.verify_sign(message, self.path))
                         else:
                             self.to_backward.append((self.dict_socket_to_address[ready_server], message))
-
-    def sign(self, packet):
-        return rsa.sign(packet, self.private_key, 'SHA-256')
