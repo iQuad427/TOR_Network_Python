@@ -12,6 +12,7 @@ from Crypto.Cipher import AES
 import tools
 from phonebook import Phonebook
 
+TIME_OUT = 10
 PATH_LENGTH = 3
 STARTING_FREE_PORT = 5000
 ENDING_FREE_PORT = 64000
@@ -137,7 +138,7 @@ class Node:
 
         response = None
         while response is None and elapsed < timeout:
-            print("blocking everyone")
+            #print("blocking everyone")
             time.sleep(delay)
             response = self.recv_buffer.pop(0) if len(self.recv_buffer) > 0 else None
             elapsed += delay
@@ -195,7 +196,10 @@ class Node:
 
             next_node = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             next_node.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            next_node.bind((self.address[0], self.free_port))
+            if address in self.dict_address_to_portsocket.keys():
+                next_node.bind((self.address[0], self.dict_address_to_portsocket[address][0]))
+            else:
+                next_node.bind((self.address[0], self.free_port))
 
             if onion[:5] == b'send:':
                 if not self.is_exit_node:
@@ -230,21 +234,22 @@ class Node:
 
             next_node.close()
 
-            # Saving the port from which we send the onion
-            self.dict_address_to_portsocket[address] = [self.free_port]
-            # Creating a socket that will listen on the same port from which we
-            # sent the onion to be able to get responses
-            server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            server.bind((self.address[0], self.free_port))
-            server.listen(1)
-            self.sockets.append(server)
-            # Creating a socket and add it to listening_backward loop
-            self.dict_address_to_portsocket[address].append(server)
-            # Adding the address to which the socket will backward the received onions
-            self.dict_socket_to_address[server] = address
+            if address not in self.dict_address_to_portsocket.keys():
+                # Saving the port from which we send the onion
+                self.dict_address_to_portsocket[address] = [self.free_port]
+                # Creating a socket that will listen on the same port from which we
+                # sent the onion to be able to get responses
+                server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                server.bind((self.address[0], self.free_port))
+                server.listen(1)
+                self.sockets.append(server)
+                # Creating a socket and add it to listening_backward loop
+                self.dict_address_to_portsocket[address].append(server)
+                # Adding the address to which the socket will backward the received onions
+                self.dict_socket_to_address[server] = address
 
-            self.increment_port()
+                self.increment_port()
 
             return
         # threading.Thread(target=self.backward).start()
@@ -325,7 +330,7 @@ class Node:
         formatted = tools.format_message("username", "public_key", "void")
 
         self.send(tools.format_send_to(authentication_server, formatted))
-        public_key = self.recv(2)
+        public_key = self.recv(TIME_OUT)
 
         if public_key is None:
             print("failed")
@@ -335,7 +340,7 @@ class Node:
         formatted = tools.format_message("username", "sign_up", password_hash, to_decode=False)
         self.send(tools.format_send_to(authentication_server, formatted))
 
-        server_response = self.recv(2)
+        server_response = self.recv(TIME_OUT)
         print(server_response)
 
         if server_response is None:
@@ -353,7 +358,7 @@ class Node:
         formatted = tools.format_message("username", "public_key", "void")
         self.send(tools.format_send_to(authentication_server, formatted))
 
-        public_key = self.recv(2, 1)
+        public_key = self.recv(TIME_OUT)
 
         if public_key is None:
             print("failed")
@@ -362,7 +367,7 @@ class Node:
         formatted = tools.format_message("username", "sign_in", "void")
         self.send(tools.format_send_to(authentication_server, formatted))
 
-        message = self.recv(2)
+        message = self.recv(TIME_OUT)
 
         if message is None:
             print("failed")
@@ -383,7 +388,7 @@ class Node:
         formatted = tools.format_message("username", "challenge", actual, to_decode=False)
         self.send(tools.format_send_to(authentication_server, formatted))
 
-        server_response = self.recv(2)
+        server_response = self.recv(TIME_OUT)
         print(server_response)
 
         if server_response is None:

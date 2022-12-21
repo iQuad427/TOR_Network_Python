@@ -28,7 +28,7 @@ def start_network():
     # south_node.send_to_server()
     # east_node.send_to_server()
     south_node.sign_up()
-    # south_node.sign_in()
+    south_node.sign_in()
     # south_node.disconnect()
 
 
