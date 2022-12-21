@@ -56,6 +56,10 @@ def parsing(argv):
            (argv[pos[1] + 1:].decode('utf-8') if to_decode else argv[pos[1] + 1:])
 
 
+def format_send_to(address, message):
+    return f"{address}:send:".encode('utf-8') + message
+
+
 def generate_onion(message, node_path):
     packaging_order = copy.deepcopy(node_path)
     packaging_order.reverse()
@@ -101,7 +105,7 @@ def encrypt_path(packet, path):
     Encrypts packet with the public keys of the nodes contained in the list
     :return:
     """
-    encrypted_packet = bytes(packet, 'utf-8')
+    encrypted_packet = packet
     packaging_order = copy.deepcopy(path)
     packaging_order.reverse()
     for node in packaging_order:

@@ -8,37 +8,37 @@ def start_network():
     """
     Deploy the four kernel nodes of the TOR network
     """
-    west_node = client.Node(starting_nodes[0])
-    west_node.init_node_as_relay()
+    west_node = client.Node(starting_nodes[0], True)
+    west_node.start()
 
-    north_node = client.Node(starting_nodes[1])
-    north_node.init_node_as_relay()
+    north_node = client.Node(starting_nodes[1], False)
+    north_node.start()
 
-    east_node = client.Node(starting_nodes[2])
-    east_node.init_node_as_relay()
+    east_node = client.Node(starting_nodes[2], False)
+    east_node.start()
 
-    south_node = client.Node(starting_nodes[3])
-    south_node.init_node_as_relay()
+    south_node = client.Node(starting_nodes[3], False)
+    south_node.start()
 
-    #south_node.sign_up()
-    #south_node.sign_in()
+    # west_node.start_backwarding()
+    # north_node.start_backwarding()
+    # east_node.start_backwarding()
+    # south_node.start_backwarding()
 
-    west_node.start_listen_backward()
-    north_node.start_listen_backward()
-    east_node.start_listen_backward()
-    south_node.start_listen_backward()
-
-    # south_node.signup_to_authentication_server()
-    # south_node.signin_to_authentication_server()
+    # south_node.send_to_server()
+    # east_node.send_to_server()
+    south_node.sign_up()
+    # south_node.sign_in()
+    # south_node.disconnect()
 
 
 def test_phonebook():
-    client.Node(("127.0.0.5", 4000)).init_node_as_relay()
-    client.Node(("127.0.0.5", 4010)).init_node_as_relay()
-    client.Node(("127.0.0.5", 4020)).init_node_as_relay()
-    client.Node(("127.0.0.5", 4030)).init_node_as_relay()
+    client.Node(("127.0.0.5", 4000), False).start()
+    client.Node(("127.0.0.5", 4010), False).start()
+    client.Node(("127.0.0.5", 4020), False).start()
+    client.Node(("127.0.0.5", 4030), False).start()
 
-    node0 = client.Node(("127.0.0.5", 4040))
+    node0 = client.Node(("127.0.0.5", 4040), False)
 
     contact_dict = {
         ("127.0.0.5", 4000): ["new node", False],
@@ -47,10 +47,10 @@ def test_phonebook():
         ("127.0.0.5", 4030): ["new node", False],
     }
     node0.phonebook.update_contact_list(contact_dict)
-    node0.init_node_as_relay()
+    node0.start()
 
-    node1 = client.Node(("127.0.0.5", 4050))
-    node1.init_node_as_relay()
+    node1 = client.Node(("127.0.0.5", 4050), False)
+    node1.start()
     node1.phonebook.update_contact_list({("127.0.0.5", 4040): ["known node from before", False]})
 
     node1.update_phonebook(("127.0.0.5", 4040))
@@ -59,9 +59,8 @@ def test_phonebook():
 
 
 def test_forwarding():
-    node = client.Node(("127.0.0.5", 4000))
-    node.init_node_as_relay()
-    node.start_listen_backward()
+    node = client.Node(("127.0.0.5", 4000), False)
+    node.start()
     node.phonebook.complete_contacts(starting_nodes)
     node.send("0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
               "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
@@ -122,12 +121,13 @@ def test_forwarding():
               "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
               "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
               "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
-              "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000")
+              "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+              .encode())
 
 
 if __name__ == '__main__':
     start_network()
     # test_phonebook()
-    test_forwarding()
+    # test_forwarding()
 
 

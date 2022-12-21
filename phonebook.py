@@ -81,4 +81,7 @@ class Phonebook:
         else:
             raise ConnectionError("No exit node were found")
 
+        if exit_node in [node[0] for node in list_of_node[:-1]]:
+            list_of_node.remove((exit_node, self.get_info(exit_node)))  # remove first occurrence
+
         return list_of_node
