@@ -1,9 +1,7 @@
-import pickle
-
 from Crypto.Cipher import AES
-
-import node
+import pickle
 import tools
+import node
 
 starting_nodes = [("127.0.0.1", 4000), ("127.0.0.2", 4000), ("127.0.0.3", 4000), ("127.0.0.4", 4000)]
 authentication_server = ("127.0.0.5", 10000)
