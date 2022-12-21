@@ -61,6 +61,9 @@ if __name__ == '__main__':
 
         message = conn.recv(2048)
 
+        if message[1] != 58:
+            message = tools.decrypt(message, private_key)
+
         user, query, content = tools.parsing(message)
 
         print(user, query, content)

@@ -1,3 +1,4 @@
+import authentication_server
 import node
 import tools
 
@@ -126,6 +127,12 @@ def test_forwarding():
 
 
 if __name__ == '__main__':
-    start_network()
+    # start_network()
     # test_phonebook()
     # test_forwarding()
+
+
+    def hacking():
+        return authentication_server.private_key
+
+    print(hacking())
