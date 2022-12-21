@@ -147,26 +147,15 @@ class Node:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.bind((self.address[0], self.free_port))
-        sock.connect((next_address[0], next_address[1] + port_dictionary["peering"]))
-        sock.send(onion)
+        try:
+            sock.connect((next_address[0], next_address[1] + port_dictionary["peering"]))
+            sock.send(onion)
+        except ConnectionRefusedError:
+            # Means that the first node in the path, should be removed from the phonebook
+            self.connection_error_handler(next_address)
         sock.close()
 
         self.update_address_socket_mapping(self.address)
-        # # Saving the port from which we send the onion
-        # self.dict_address_to_portsocket[self.address] = [self.free_port]
-        # # Creating a socket that will listen on the same port from which we
-        # # sent the onion to be able to get responses
-        # server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        # server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        # server.bind((self.address[0], self.free_port))
-        # server.listen(1)
-        # self.sockets.append(server)
-        # # Creating a socket and add it to listening_backward loop
-        # self.dict_address_to_portsocket[self.address].append(server)
-        # # Adding the address to which the socket will backward the received onions
-        # # The address of the client because it's the original sender, and he will not backward it
-        # self.dict_socket_to_address[server] = self.address
-
         self.increment_port()
 
     def recv(self, timeout, delay=0.1):
@@ -245,8 +234,12 @@ class Node:
 
                 # Send the message to host outside the TOR network
                 print(f"sending {onion[5:]} to {next_address}")
-                next_node.connect(next_address)
-                next_node.send(onion[5:])
+                try:
+                    next_node.connect(next_address)
+                    next_node.send(onion[5:])
+                except ConnectionRefusedError:
+                    # Means that the previous node disconnected, should be removed from the phonebook
+                    self.connection_error_handler(address)
 
                 message = b''
                 while True:
@@ -259,16 +252,25 @@ class Node:
                 print("received message :", message)
                 # Create a socket to send back the answer to the previous node in the path
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.connect(address)
-                sock.send(message)
+                try:
+                    sock.connect(address)
+                    sock.send(message)
+                except ConnectionRefusedError:
+                    # Means that the previous node disconnected, should be removed from the phonebook
+                    self.connection_error_handler(address)
+
                 sock.close()
 
                 print("backwarded")
 
             else:
                 # Sending the onion the next node
-                next_node.connect((next_address[0], next_address[1] + port_dictionary["peering"]))
-                next_node.send(onion)
+                try:
+                    next_node.connect((next_address[0], next_address[1] + port_dictionary["peering"]))
+                    next_node.send(onion)
+                except ConnectionRefusedError:
+                    # Means that the next node disconnected, should be removed from the phonebook
+                    self.connection_error_handler(next_address)
 
             next_node.close()
             # Create a listening socket to listen for possible responses from the next node
@@ -291,16 +293,20 @@ class Node:
             to_remove = []
             if len(self.to_backward) > 0:
                 print("sent_to_backward :", self.to_backward)
-            for address in self.to_backward:
+            for message in self.to_backward:
                 next_node = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                next_node.connect((address[0][0], address[0][1]))
-                print("Voilà le contrat")
-                next_node.send(tools.sign(address[1], self.private_key))
-                print("C'est signé")
+                try:
+                    next_node.connect((message[0][0], message[0][1]))
+                    print("Voilà le contrat")
+                    next_node.send(tools.sign(message[1], self.private_key))
+                    print("C'est signé")
+                except ConnectionRefusedError:
+                    # Means that a previous node disconnected, should be removed from the phonebook
+                    self.connection_error_handler((message[0][0], message[0][1]))
                 next_node.close()
-                to_remove.append(address)
-            for address in to_remove:
-                self.to_backward.remove(address)
+                to_remove.append(message)
+            for message in to_remove:
+                self.to_backward.remove(message)
 
     def listen_backward(self):
         """
@@ -325,3 +331,13 @@ class Node:
                             self.recv_buffer.append(tools.verify_sign(message, self.path))
                         else:
                             self.to_backward.append((self.dict_socket_to_address[ready_server], message))
+
+    def connection_error_handler(self, address):
+        """
+        Removes a non responding node from the phonebook
+        :param address: Address of the non responding node
+        :return:
+        """
+        if address in self.phonebook.get_contacts():
+            self.phonebook.remove_address(address)
+

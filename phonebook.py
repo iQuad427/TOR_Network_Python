@@ -85,3 +85,6 @@ class Phonebook:
             list_of_node.remove((exit_node, self.get_info(exit_node)))  # remove first occurrence
 
         return list_of_node
+
+    def remove_address(self, address):
+        self.contact_list.pop(address)
