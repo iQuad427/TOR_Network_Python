@@ -1,18 +1,14 @@
 import copy
 import pickle
-import random
 import socket
 import threading
 import time
 import rsa
 import select
 
-from Crypto.Cipher import AES
-
 import tools
 from phonebook import Phonebook
 
-TIME_OUT = 10
 PATH_LENGTH = 3
 STARTING_FREE_PORT = 5000
 ENDING_FREE_PORT = 64000
@@ -23,8 +19,6 @@ starting_phonebook = {
     ("127.0.0.3", 4000): ["east_node", False],
     ("127.0.0.4", 4000): ["south_node", False],
 }
-
-authentication_server = ("127.0.0.5", 10000)
 
 port_dictionary = {
     "listening":    0,
@@ -138,7 +132,7 @@ class Node:
 
         response = None
         while response is None and elapsed < timeout:
-            #print("blocking everyone")
+            # print("blocking everyone")
             time.sleep(delay)
             response = self.recv_buffer.pop(0) if len(self.recv_buffer) > 0 else None
             elapsed += delay
@@ -252,7 +246,6 @@ class Node:
                 self.increment_port()
 
             return
-        # threading.Thread(target=self.backward).start()
 
     def start_backwarding(self):
         """
@@ -286,145 +279,26 @@ class Node:
         """
         while True:
             if self.sockets:
-                print("tried to backward : ", self.sockets)
-                readable, _, _ = select.select(self.sockets, [], [])
-                ready_server = readable[0]
-                connection, address = ready_server.accept()
-                with connection:
-                    print("found someone to backward")
-                    message = connection.recv(2048)
-                    # message = message.decode()
-                    print(f"\nMessage received : {message}\n"
-                          f"At   : {self.address}\n"
-                          f"From : {address}")
+                readable, _, _ = select.select(self.sockets, [], [], 0.2)
 
-                    # connection.send(message.encode())
+                if readable:
+                    ready_server = readable[0]
+                    connection, address = ready_server.accept()
+                    with connection:
+                        message = connection.recv(2048)
+                        # message = message.decode()
+                        print(f"\nMessage received : {message}\n"
+                              f"At   : {self.address}\n"
+                              f"From : {address}")
 
-                    print(self.dict_socket_to_address[ready_server], self.address)
-                    if self.dict_socket_to_address[ready_server] == self.address:
-                        print("Returned to sender")
-                        self.recv_buffer.append(message)
-                    else:
-                        self.to_backward.append((self.dict_socket_to_address[ready_server], message))
+                        # connection.send(message.encode())
+
+                        print(self.dict_socket_to_address[ready_server], self.address)
+                        if self.dict_socket_to_address[ready_server] == self.address:
+                            print("Returned to sender")
+                            self.recv_buffer.append(message)
+                        else:
+                            self.to_backward.append((self.dict_socket_to_address[ready_server], message))
 
     def sign(self, packet):
         return rsa.sign(packet, self.private_key, 'SHA-256')
-
-    def send_to_server(self):
-        print("test sending to server :")
-        print("request public key")
-        formatted = tools.format_message("username", "public_key", "void")
-        self.send(tools.format_send_to(authentication_server, formatted))
-        response = self.recv(2)
-
-        if response is None:
-            print("failed")
-            return
-
-        print("Public key :", response)
-
-    def sign_up(self):
-        print("sign up")
-
-        print("request public key")
-        formatted = tools.format_message("username", "public_key", "void")
-
-        self.send(tools.format_send_to(authentication_server, formatted))
-        public_key = self.recv(TIME_OUT)
-
-        if public_key is None:
-            print("failed")
-            return
-
-        password_hash = b"hashed_password_0000000000000000"
-        formatted = tools.format_message("username", "sign_up", password_hash, to_decode=False)
-        self.send(tools.format_send_to(authentication_server, formatted))
-
-        server_response = self.recv(TIME_OUT)
-        print(server_response)
-
-        if server_response is None:
-            print("failed")
-            return
-
-        user, request, content = tools.parsing(server_response)
-
-        if request == "log":
-            print("Sign up status :", content)
-
-    def sign_in(self):
-        print("sign in")
-        print("request public key")
-        formatted = tools.format_message("username", "public_key", "void")
-        self.send(tools.format_send_to(authentication_server, formatted))
-
-        public_key = self.recv(TIME_OUT)
-
-        if public_key is None:
-            print("failed")
-            return
-
-        formatted = tools.format_message("username", "sign_in", "void")
-        self.send(tools.format_send_to(authentication_server, formatted))
-
-        message = self.recv(TIME_OUT)
-
-        if message is None:
-            print("failed")
-            return
-
-        user, request, challenge = tools.parsing(message)
-
-        if request != "challenge":
-            print("Sign in failed")
-            return
-
-        print("responding to challenge")
-
-        password = "hashed_password_0000000000000000".encode()
-        cipher = AES.new(password, AES.MODE_CTR, nonce=b'1')
-        actual = cipher.encrypt(challenge.encode('utf-8'))
-
-        formatted = tools.format_message("username", "challenge", actual, to_decode=False)
-        self.send(tools.format_send_to(authentication_server, formatted))
-
-        server_response = self.recv(TIME_OUT)
-        print(server_response)
-
-        if server_response is None:
-            print("failed")
-            return
-
-        user, query, content = tools.parsing(server_response)
-
-        if query == "log":
-            print("Sign in status :", content)
-
-    def disconnect(self):
-        print("disconnecting")
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            sock.bind((self.address[0], self.address[1] + port_dictionary["auth"]))
-            sock.listen()
-            print("request public key")
-            formatted = tools.format_message("username", "public_key", "void")
-            self.send(tools.format_send_to(authentication_server, formatted))
-
-            conn, addr = sock.accept()
-
-            public_key = conn.recv(2048)
-
-            formatted = tools.format_message("username", "disconnect", "void")
-            self.send(tools.format_send_to(authentication_server, formatted))
-
-            conn, addr = sock.accept()
-
-            server_response = conn.recv(2048)
-
-            user, query, content = tools.parsing(server_response)
-
-            if query == "log":
-                print("Connection status :", content)
-
-
-

@@ -16,6 +16,7 @@ SIGNING_IN = 1
 CONNECTED = 2
 
 client_address = ("127.0.0.4", 4006)
+authentication_server = ("127.0.0.5", 10000)
 
 # username : log, password
 user_credentials = dict()
@@ -48,7 +49,7 @@ def format_challenge(username, to_encode=True):
 
 if __name__ == '__main__':
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.bind(("127.0.0.5", 10000))
+    sock.bind(authentication_server)
     sock.listen()
 
     print("server started")

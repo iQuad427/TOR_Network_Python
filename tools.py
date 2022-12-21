@@ -1,4 +1,6 @@
 import copy
+import hashlib
+
 from Crypto.Random import get_random_bytes
 from Crypto.Cipher import AES
 import rsa
@@ -58,6 +60,10 @@ def parsing(argv):
 
 def format_send_to(address, message):
     return f"{address}:send:".encode('utf-8') + message
+
+
+def hash_password_to_aes_key(password):
+    return hashlib.sha256(password.encode()).hexdigest().encode()[:32]
 
 
 def generate_onion(message, node_path):
