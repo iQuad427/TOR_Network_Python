@@ -26,7 +26,7 @@ def start_network():
     # east_node.start_backwarding()
     # south_node.start_backwarding()
 
-    # south_node.send_to_server()
+    #south_node.send_to_server()
     # east_node.send_to_server()
     # south_node.sign_up()
     # south_node.sign_in()

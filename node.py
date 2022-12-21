@@ -9,10 +9,13 @@ import select
 import tools
 from phonebook import Phonebook
 
-PATH_LENGTH = 3
+PATH_LENGTH = 3     # The maximum number of nodes in the communication path
+
+# The range of free ports that can be assigned to sockets
 STARTING_FREE_PORT = 5000
 ENDING_FREE_PORT = 64000
 
+# Initial dictionary containing initial addresses as keys and (public_key, is_exit_node) as values
 starting_phonebook = {
     ("127.0.0.1", 4000): ["west_node", True],
     ("127.0.0.2", 4000): ["north_node", False],
@@ -20,6 +23,7 @@ starting_phonebook = {
     ("127.0.0.4", 4000): ["south_node", False],
 }
 
+# Specific indexes to assign different ports for different purposes
 port_dictionary = {
     "listening":    0,
     "peering":      1,
@@ -49,20 +53,30 @@ class Node:
         self.recv_buffer = list()
 
     def start(self):
+        """
+        Starts listening to incoming requests
+        Starts the forwarding loop to forward incoming messages from a previous node
+        Starts the backwarding loop to backward incoming messages from a next node
+        """
         print(f"{self.address} is online")
         threading.Thread(target=self.start_listening).start()
         threading.Thread(target=self.start_forwarding).start()
         threading.Thread(target=self.start_backwarding).start()
 
     def init_phonebook(self):
+        """
+        Init the phonebook with correct addresses and corresponding (public_key, is_exit_node) by
+        sending requests to the addresses in the starting_phonebook
+        :return:
+        """
         list_of_contact = copy.deepcopy(starting_phonebook)
         self.phonebook.update_contact_list(list_of_contact)
         self.phonebook.complete_contacts([contact for contact in list_of_contact])
 
     def update_phonebook(self, address):
         """
-        Update the phonebook through a peer phonebook
-        :param address: address of the peer we want the phonebook of
+        Update the phonebook with a peer's phonebook
+        :param address: tuple containing the IP address and port of the peer whose phonebook we want
         """
         if address not in self.phonebook.get_contacts():
             raise PermissionError("Node not in phonebook")
@@ -78,6 +92,11 @@ class Node:
             self.phonebook.update_contact_list(new_phonebook)
 
     def increment_port(self):
+        """
+        Increment the node's current free port by 1 and return the new value
+        If the new port exceeds the ending free port, reset the free port to the starting free port
+        :return:
+        """
         new_port = self.free_port + 1
         if new_port > ENDING_FREE_PORT:
             self.free_port = STARTING_FREE_PORT
@@ -87,8 +106,32 @@ class Node:
         return self.free_port
 
     def set_path(self):
+        """
+        If the path has not been set yet, add the first node in the exit set to the path
+        :return:
+        """
         if not self.path:
             self.path = self.phonebook.define_path(PATH_LENGTH)
+
+    def update_address_socket_mapping(self, address):
+        """
+        Update the mapping of addresses to sockets and sockets to addresses for the node.
+        This function creates a socket that listens on a specific port and adds it to the list of sockets
+        that the node listens to for incoming messages.
+        :param address: tuple containing the IP address and port of the node we want to update the mapping for
+        """
+        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server.bind((self.address[0], self.free_port))
+        server.listen(1)
+        self.sockets.append(server)
+        # Saving the port from which we send the onion
+        self.dict_address_to_portsocket[address] = [self.free_port]
+        # Creating a socket and add it to listening_backward loop
+        self.dict_address_to_portsocket[address].append(server)
+        # Adding the address to which the socket will backward the received onions
+        self.dict_socket_to_address[server] = address
+        self.increment_port()
 
     def send(self, message):
         """
@@ -98,8 +141,6 @@ class Node:
         print(f"Path : {[self.path[i][0] for i in range(len(self.path))]}")
 
         onion = tools.encrypt_path(message, self.path)
-        # print(f"Onion to send : {onion}")
-
         next_address, onion = tools.peel_address(onion, private_key=None)
 
         # Sending to the next node the onion
@@ -110,20 +151,21 @@ class Node:
         sock.send(onion)
         sock.close()
 
-        # Saving the port from which we send the onion
-        self.dict_address_to_portsocket[self.address] = [self.free_port]
-        # Creating a socket that will listen on the same port from which we
-        # sent the onion to be able to get responses
-        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        server.bind((self.address[0], self.free_port))
-        server.listen(1)
-        self.sockets.append(server)
-        # Creating a socket and add it to listening_backward loop
-        self.dict_address_to_portsocket[self.address].append(server)
-        # Adding the address to which the socket will backward the received onions
-        # The address of the client because it's the original sender, and he will not backward it
-        self.dict_socket_to_address[server] = self.address
+        self.update_address_socket_mapping(self.address)
+        # # Saving the port from which we send the onion
+        # self.dict_address_to_portsocket[self.address] = [self.free_port]
+        # # Creating a socket that will listen on the same port from which we
+        # # sent the onion to be able to get responses
+        # server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        # server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # server.bind((self.address[0], self.free_port))
+        # server.listen(1)
+        # self.sockets.append(server)
+        # # Creating a socket and add it to listening_backward loop
+        # self.dict_address_to_portsocket[self.address].append(server)
+        # # Adding the address to which the socket will backward the received onions
+        # # The address of the client because it's the original sender, and he will not backward it
+        # self.dict_socket_to_address[server] = self.address
 
         self.increment_port()
 
@@ -167,8 +209,13 @@ class Node:
                 # print(f"{self.address} forwarded a packet from {address}")
 
     def forwarding(self, previous_node, address):
+        """
+        Forward a message received from a previous node in the onion routing path
+        :param previous_node: socket connected to the previous node in the path
+        :param address: tuple containing the IP address and port of the previous node
+        """
         while True:
-            # Receive message (could be longer than 2048, need to concat)
+            # Receive a message (could be longer than 2048, need to concat)
             message = b''
             while True:
                 packet = previous_node.recv(2048)
@@ -176,45 +223,41 @@ class Node:
                     break
                 message += packet
 
-            # If we did receive the onion
+            # If we did not receive the onion
             if message == b'':
                 return
 
+            # Get the address of the next node by removing one layer of encryption
             next_address, onion = tools.peel_address(message, self.private_key)
-            # print("Next address : " + str(next_address))
-            # print("Next message : " + str(onion))
 
-            if next_address is None:
+            if next_address is None:    # Means That this node is the recipient of the message
                 print(f"Message received at {self.address} : {onion.decode('utf-8')}")
                 break
 
+            # Create a socket to send the message to the next node
             next_node = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             next_node.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            if address in self.dict_address_to_portsocket.keys():
-                next_node.bind((self.address[0], self.dict_address_to_portsocket[address][0]))
-            else:
-                next_node.bind((self.address[0], self.free_port))
+            next_node.bind((self.address[0], self.free_port))
 
             if onion[:5] == b'send:':
                 if not self.is_exit_node:
-
                     return
 
+                # Send the message to host outside the TOR network
                 print(f"sending {onion[5:]} to {next_address}")
-
                 next_node.connect(next_address)
                 next_node.send(onion[5:])
 
                 message = b''
                 while True:
                     print("receiving message")
-                    packet = next_node.recv(2048)
+                    packet = next_node.recv(2048)   # Receiving a possible answer from the host
                     if not packet:
                         break
                     message += packet
 
                 print("received message :", message)
-
+                # Create a socket to send back the answer to the previous node in the path
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 sock.connect(address)
                 sock.send(message)
@@ -223,28 +266,14 @@ class Node:
                 print("backwarded")
 
             else:
+                # Sending the onion the next node
                 next_node.connect((next_address[0], next_address[1] + port_dictionary["peering"]))
                 next_node.send(onion)
 
             next_node.close()
-
+            # Create a listening socket to listen for possible responses from the next node
             if address not in self.dict_address_to_portsocket.keys():
-                # Saving the port from which we send the onion
-                self.dict_address_to_portsocket[address] = [self.free_port]
-                # Creating a socket that will listen on the same port from which we
-                # sent the onion to be able to get responses
-                server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                server.bind((self.address[0], self.free_port))
-                server.listen(1)
-                self.sockets.append(server)
-                # Creating a socket and add it to listening_backward loop
-                self.dict_address_to_portsocket[address].append(server)
-                # Adding the address to which the socket will backward the received onions
-                self.dict_socket_to_address[server] = address
-
-                self.increment_port()
-
+                self.update_address_socket_mapping(address)
             return
 
     def start_backwarding(self):
@@ -264,9 +293,7 @@ class Node:
                 print("sent_to_backward :", self.to_backward)
             for address in self.to_backward:
                 next_node = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                # next_node.bind((self.address[0], self.free_port))
                 next_node.connect((address[0][0], address[0][1]))
-                # next_node.send(address[1])
                 print("Voilà le contrat")
                 next_node.send(tools.sign(address[1], self.private_key))
                 print("C'est signé")
@@ -278,7 +305,7 @@ class Node:
     def listen_backward(self):
         """
         Loop listening on all the ports that were used to forward onions.
-        Adds received messages and the address to which send back to a list
+        Adds received messages and the address to which send back to the list to_backward
         """
         while True:
             if self.sockets:
@@ -289,13 +316,9 @@ class Node:
                     connection, address = ready_server.accept()
                     with connection:
                         message = connection.recv(2048)
-                        # message = message.decode()
                         print(f"\nMessage received : {message}\n"
                               f"At   : {self.address}\n"
                               f"From : {address}")
-
-                        # connection.send(message.encode())
-
                         print(self.dict_socket_to_address[ready_server], self.address)
                         if self.dict_socket_to_address[ready_server] == self.address:
                             print("Returned to sender")
