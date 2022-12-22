@@ -20,7 +20,7 @@ python3 launch.py
 ### 2. Run the authentication server
 
 ```
-python3 authentication_server.py
+python3 auth_server.py
 ```
 
 

@@ -12,7 +12,7 @@ from phonebook import Phonebook
 PATH_LENGTH = 3     # The maximum number of nodes in the communication path
 
 # The range of free ports that can be assigned to sockets
-STARTING_FREE_PORT = 5000
+STARTING_FREE_PORT = 8000
 ENDING_FREE_PORT = 64000
 
 # Initial dictionary containing initial addresses as keys and (public_key, is_exit_node) as values
@@ -27,11 +27,6 @@ starting_phonebook = {
 port_dictionary = {
     "listening":    0,
     "peering":      1,
-    "forwarding":   2,
-    "backwarding":  3,
-    "sending":      4,
-    "phonebook":    5,
-    "auth":         6,
 }
 
 
@@ -46,11 +41,14 @@ class Node:
         self.path = list()
         self.free_port = STARTING_FREE_PORT
         self.backwarding_sockets = list()
-        self.dict_address_to_portsocket = {(own_address[0], 4999): [4999]}
+        self.dict_address_to_portsocket = dict()  # {(own_address[0], 4999): [4999]}
         self.sockets = list()
-        self.dict_socket_to_address = {4999: (own_address[0], 4999)}
+        self.dict_socket_to_address = dict()  # {4999: (own_address[0], 4999)}
         self.to_backward = list()
         self.recv_buffer = list()
+        self.thread_locked = False
+        self.listening_socket = None
+        self.forwarding_socket = None
 
     def start(self):
         """
@@ -58,10 +56,17 @@ class Node:
         Starts the forwarding loop to forward incoming messages from a previous node
         Starts the backwarding loop to backward incoming messages from a next node
         """
-        print(f"{self.address} is online")
+        self.thread_locked = False
         threading.Thread(target=self.start_forwarding).start()
         threading.Thread(target=self.start_backwarding).start()
         threading.Thread(target=self.start_listening).start()
+
+    def stop(self):
+        self.thread_locked = True
+
+        self.sockets.clear()
+        self.dict_address_to_portsocket.clear()
+        self.dict_socket_to_address.clear()
 
     def init_phonebook(self):
         """
@@ -82,7 +87,6 @@ class Node:
             raise PermissionError("Node not in phonebook")
 
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            sock.bind((self.address[0], self.address[1] + port_dictionary["phonebook"]))
             sock.connect(address)
 
             sock.send(pickle.dumps("phonebook"))
@@ -112,7 +116,8 @@ class Node:
         """
         if not self.path:
             if len(self.phonebook.get_contact_list()) < PATH_LENGTH:
-                self.update_phonebook(self.phonebook.contact_list)
+                for node in self.phonebook.contact_list:
+                    self.update_phonebook(node)
             self.path = self.phonebook.define_path(PATH_LENGTH)
 
     def update_address_socket_mapping(self, address):
@@ -139,7 +144,6 @@ class Node:
         Send a packet after onioning it
         """
         self.set_path()
-        print(f"Path : {[self.path[i][0] for i in range(len(self.path))]}")
 
         onion = tools.encrypt_path(message, self.path)
         next_address, onion = tools.peel_address(onion, private_key=None)
@@ -170,12 +174,24 @@ class Node:
 
         return response
 
-    def start_listening(self):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+    def get_listening_socket(self):
+        if self.listening_socket is not None:
+            return self.listening_socket
+        else:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             sock.bind(self.address)
-            sock.listen()
+            sock.settimeout(1)
+            self.listening_socket = sock
 
-            while True:
+        return sock
+
+    def start_listening(self):
+        sock = self.get_listening_socket()
+        sock.listen()
+
+        while not self.thread_locked:
+            try:
                 connection, address = sock.accept()
                 with connection:
                     message = connection.recv(2048)
@@ -184,15 +200,30 @@ class Node:
                         connection.send(pickle.dumps(self.phonebook.get_contact_list()))
                     elif message == "public_key":
                         connection.send(pickle.dumps(self.public_key))
+            except socket.timeout:
+                pass
+
+    def get_forwarding_socket(self):
+        if self.forwarding_socket is not None:
+            return self.forwarding_socket
+        else:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind((self.address[0], self.address[1] + port_dictionary["peering"]))
+            sock.settimeout(1)
+            self.forwarding_socket = sock
+
+        return sock
 
     def start_forwarding(self):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            sock.bind((self.address[0], self.address[1] + port_dictionary["peering"]))
-            sock.listen()
-
-            while True:
+        sock = self.get_forwarding_socket()
+        sock.listen()
+        while not self.thread_locked:
+            try:
                 connection, address = sock.accept()
                 threading.Thread(target=self.forwarding, args=(connection, address)).start()
+            except socket.timeout:
+                pass
 
     def forwarding(self, previous_node, address):
         """
@@ -200,7 +231,7 @@ class Node:
         :param previous_node: socket connected to the previous node in the path
         :param address: tuple containing the IP address and port of the previous node
         """
-        while True:
+        while not self.thread_locked:
             # Receive a message (could be longer than 2048, need to concat)
             message = b''
             while True:
@@ -281,7 +312,7 @@ class Node:
         """
         Loop to send back the responses received for the forwarded onions
         """
-        while True:
+        while not self.thread_locked:
             to_remove = []
             for message in self.to_backward:
                 next_node = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -301,7 +332,7 @@ class Node:
         Loop listening on all the ports that were used to forward onions.
         Adds received messages and the address to which send back to the list to_backward
         """
-        while True:
+        while not self.thread_locked:
             if self.sockets:
                 readable, _, _ = select.select(self.sockets, [], [], 0.2)
 

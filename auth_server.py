@@ -1,4 +1,3 @@
-import hashlib
 import pickle
 import socket
 import rsa
@@ -47,7 +46,7 @@ def format_challenge(username, to_encode=True):
     return formatted.encode('utf-8') if to_encode else formatted
 
 
-if __name__ == '__main__':
+def launch_server():
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.bind(authentication_server)
     sock.listen()
@@ -70,7 +69,7 @@ if __name__ == '__main__':
 
         verified_user = False
         if user in user_credentials and type(user_credentials[user][PUBLIC_KEY_INDEX]) is rsa.PublicKey:
-            client_public_key = user_credentials [user][PUBLIC_KEY_INDEX]
+            client_public_key = user_credentials[user][PUBLIC_KEY_INDEX]
             try:
                 verified_user = (rsa.verify(raw_message, signature, client_public_key) == 'SHA-256')
             except rsa.VerificationError:
@@ -128,3 +127,7 @@ if __name__ == '__main__':
                     conn.send(tools.format_message("server", "log", "Error : access denied"))
 
         conn.close()
+
+
+if __name__ == '__main__':
+    launch_server()

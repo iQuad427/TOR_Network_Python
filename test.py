@@ -1,3 +1,6 @@
+import socket
+import time
+
 import rsa
 
 import auth_server
@@ -119,7 +122,4 @@ def test_forwarding():
 
 
 if __name__ == '__main__':
-    # start_network()
-    # test_phonebook()
-    # test_forwarding()
     pass

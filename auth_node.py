@@ -10,7 +10,7 @@ starting_nodes = [("127.0.0.1", 4000), ("127.0.0.2", 4000), ("127.0.0.3", 4000),
 authentication_server = ("127.0.0.5", 10000)
 
 # Timeout for receiving messages
-TIME_OUT = 10
+TIME_OUT = 5
 
 
 class AuthenticationNode(node.Node):
@@ -21,7 +21,7 @@ class AuthenticationNode(node.Node):
         :param is_exit_node: Indicating whether the node is an exit node.
         """
         node.Node.__init__(self, address, is_exit_node)
-        self.server_public_key = 0
+        self.server_public_key = None
         self.client_public_key, self.client_private_key = rsa.newkeys(1024)
 
     def start(self):
@@ -29,9 +29,8 @@ class AuthenticationNode(node.Node):
         Starts the node and retrieves the server's public key.
         """
         node.Node.start(self)
-
-    def launch(self):
-        self.server_public_key = self.ask_for_server_public_key()
+        while self.server_public_key is None:
+            self.server_public_key = self.ask_for_server_public_key()
 
     def ask_for_server_public_key(self):
         """

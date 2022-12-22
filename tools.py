@@ -67,7 +67,6 @@ def parsing(argv):
     :param argv: the message after preprocessing (i.e. : "username:query:content")
     :return: username, query, content
     """
-    print(argv)
     if argv[1] != b':'[0]:
         return None, None, None, None, None
 
@@ -149,7 +148,6 @@ def encrypt_path(packet, path):
     """
     encrypted_packet = packet
     for node in path[::-1]:
-        # print(node[1][0])
         encrypted_packet = encrypt(encrypted_packet, node[1][0])
         encrypted_packet = bytes(str(node[0]), 'utf-8') + bytes(":", 'utf-8') + encrypted_packet
 
@@ -208,7 +206,6 @@ def verify_sign(packet, public_key):
 def verify_sign_path(packet, path):
     verified_packet = packet
     for node in path[:-1]:  # last of path is the exit node (no signature)
-        # print(node[1][0])
         if verify_sign(verified_packet, node[1][0]):
             verified_packet = verified_packet[128:]
         else:
