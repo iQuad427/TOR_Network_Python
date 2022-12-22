@@ -1,6 +1,9 @@
-import authentication_server
+import rsa
+
+import auth_server
 import node
 import tools
+from auth_node import AuthenticationNode
 
 starting_nodes = [("127.0.0.1", 4000), ("127.0.0.2", 4000), ("127.0.0.3", 4000), ("127.0.0.4", 4000)]
 
@@ -20,17 +23,6 @@ def start_network():
 
     south_node = node.Node(starting_nodes[3], False)
     south_node.start()
-
-    # west_node.start_backwarding()
-    # north_node.start_backwarding()
-    # east_node.start_backwarding()
-    # south_node.start_backwarding()
-
-    #south_node.send_to_server()
-    # east_node.send_to_server()
-    # south_node.sign_up()
-    # south_node.sign_in()
-    # south_node.disconnect()
 
 
 def test_phonebook():
@@ -130,9 +122,4 @@ if __name__ == '__main__':
     # start_network()
     # test_phonebook()
     # test_forwarding()
-
-
-    def hacking():
-        return authentication_server.private_key
-
-    print(hacking())
+    pass

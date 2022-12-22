@@ -1,2 +1,2 @@
 pycryptodome
-rsa
+rsa~=4.9

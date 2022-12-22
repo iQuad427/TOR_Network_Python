@@ -8,19 +8,52 @@ import pickle
 import socket
 
 
-def format_message(username, query, content, to_decode=True):
+def format_message(username, query, content, private_key=None, encoding=1):
     """
     Creates a formatted challenge from the username that is getting challenged
 
+    :param private_key: used to tag the message
     :param username: the username of the user getting challenged
     :param query: the request made to the server
     :param content: the content required by the server to compute the request
-    :param to_decode: should the content be decoded when receiving the message (typically a hash should not)
+    :param encoding:
+        0 - do nothing
+        1 - encode (utf-8)
+        2 - pickle.dumps
 
     :return: a formatted byte string representing the whole query made to the server
     """
-    formatted = f"{1 if to_decode else 0}:{username}:{query}:".encode('utf-8')
-    return formatted + (f"{content}".encode('utf-8') if to_decode else content)
+
+    prefix = f"{encoding}:".encode('utf-8')
+    message = f"{username}:{query}:".encode('utf-8')
+    if encoding:
+        if encoding == 1:
+            message += content.encode('utf-8')
+        elif encoding == 2:
+            message += pickle.dumps(content)
+    else:
+        message += content
+
+    tag = b""
+    if private_key is not None:
+        tag = rsa.sign(message, private_key, 'SHA-256')
+
+    if len(tag) < 128:
+        padding = (128 - len(tag)) * "0"
+        tag = tag + bytes(padding, 'utf-8')
+
+    return prefix + tag + b':' + message
+
+
+def decode_message(message, delim, decoding):
+    content = message[delim[1] + 1:]
+    if decoding:
+        if decoding == 1:
+            content = content.decode('utf-8')
+        elif decoding == 2:
+            content = pickle.loads(content)
+
+    return message[:delim[0]].decode('utf-8'), message[delim[0] + 1:delim[1]].decode('utf-8'), content
 
 
 def parsing(argv):
@@ -36,10 +69,13 @@ def parsing(argv):
     """
     print(argv)
     if argv[1] != b':'[0]:
-        return None, None, None
+        return None, None, None, None, None
 
-    to_decode = argv[0] - 48  # 48 is the value of 0 in ASCII -> returns an int corresponding to the string value
+    encoding = argv[0] - 48  # 48 is the value of 0 in ASCII -> returns an int corresponding to the string value
     argv = argv[2:]
+
+    tag = argv[:128]
+    argv = argv[129:]
 
     pos = [None, None]
     number = 0
@@ -52,10 +88,10 @@ def parsing(argv):
                 break
 
     if pos[0] is None or pos[1] is None:
-        return None, None, None
+        return None, None, None, None, None
 
-    return argv[:pos[0]].decode('utf-8'), argv[pos[0] + 1:pos[1]].decode('utf-8'), \
-           (argv[pos[1] + 1:].decode('utf-8') if to_decode else argv[pos[1] + 1:])
+    user, query, content = decode_message(argv, pos, encoding)
+    return user, query, content, tag, argv
 
 
 def format_send_to(address, message):
@@ -161,29 +197,20 @@ def request_key(address):
     return new_public_key
 
 
-def send_encrypted_packet(self, packet, public_key):
-    """
-    Add the path composed of IP addresses of at least 3 nodes and encrypt them with
-    the corresponding public keys and sends it to the first node.
-    :return:
-    """
-    self.define_path()
-    packet = bytes(packet, 'utf-8')
-    encrypted_packet = encrypt(packet, public_key)
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        # sock.bind((self.address[0], self.address[1] + 2))
-        sock.connect(self.path[0][0])
-        sock.send(pickle.dumps(encrypted_packet))
-
-
 def sign(packet, private_key):
     return rsa.sign(packet, private_key, 'SHA-256') + packet
 
 
-def verify_sign(packet, path):
+def verify_sign(packet, public_key):
+    return rsa.verify(packet[128:], packet[:128], public_key)
+
+
+def verify_sign_path(packet, path):
     verified_packet = packet
     for node in path[:-1]:  # last of path is the exit node (no signature)
         # print(node[1][0])
-        rsa.verify(verified_packet[128:], verified_packet[:128], node[1][0])
-        verified_packet = verified_packet[128:]
+        if verify_sign(verified_packet, node[1][0]):
+            verified_packet = verified_packet[128:]
+        else:
+            return None
     return verified_packet

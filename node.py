@@ -1,10 +1,10 @@
 import copy
 import pickle
 import socket
+import select
 import threading
 import time
 import rsa
-import select
 
 import tools
 from phonebook import Phonebook
@@ -59,9 +59,9 @@ class Node:
         Starts the backwarding loop to backward incoming messages from a next node
         """
         print(f"{self.address} is online")
-        threading.Thread(target=self.start_listening).start()
         threading.Thread(target=self.start_forwarding).start()
         threading.Thread(target=self.start_backwarding).start()
+        threading.Thread(target=self.start_listening).start()
 
     def init_phonebook(self):
         """
@@ -131,7 +131,6 @@ class Node:
         self.dict_address_to_portsocket[address].append(server)
         # Adding the address to which the socket will backward the received onions
         self.dict_socket_to_address[server] = address
-        self.increment_port()
 
     def send(self, message):
         """
@@ -163,7 +162,6 @@ class Node:
 
         response = None
         while response is None and elapsed < timeout:
-            # print("blocking everyone")
             time.sleep(delay)
             response = self.recv_buffer.pop(0) if len(self.recv_buffer) > 0 else None
             elapsed += delay
@@ -177,8 +175,6 @@ class Node:
 
             while True:
                 connection, address = sock.accept()
-                # print(f"{self.address} accepted connection with: {address}")
-
                 with connection:
                     message = connection.recv(2048)
                     message = pickle.loads(message)
@@ -195,7 +191,6 @@ class Node:
             while True:
                 connection, address = sock.accept()
                 threading.Thread(target=self.forwarding, args=(connection, address)).start()
-                # print(f"{self.address} forwarded a packet from {address}")
 
     def forwarding(self, previous_node, address):
         """
@@ -220,7 +215,6 @@ class Node:
             next_address, onion = tools.peel_address(message, self.private_key)
 
             if next_address is None:    # Means That this node is the recipient of the message
-                print(f"Message received at {self.address} : {onion.decode('utf-8')}")
                 break
 
             # Create a socket to send the message to the next node
@@ -233,7 +227,6 @@ class Node:
                     return
 
                 # Send the message to host outside the TOR network
-                print(f"sending {onion[5:]} to {next_address}")
                 try:
                     next_node.connect(next_address)
                     next_node.send(onion[5:])
@@ -243,13 +236,11 @@ class Node:
 
                 message = b''
                 while True:
-                    print("receiving message")
                     packet = next_node.recv(2048)   # Receiving a possible answer from the host
                     if not packet:
                         break
                     message += packet
 
-                print("received message :", message)
                 # Create a socket to send back the answer to the previous node in the path
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 try:
@@ -260,8 +251,6 @@ class Node:
                     self.connection_error_handler(address)
 
                 sock.close()
-
-                print("backwarded")
 
             else:
                 # Sending the onion the next node
@@ -276,6 +265,7 @@ class Node:
             # Create a listening socket to listen for possible responses from the next node
             if address not in self.dict_address_to_portsocket.keys():
                 self.update_address_socket_mapping(address)
+                self.increment_port()
             return
 
     def start_backwarding(self):
@@ -291,15 +281,11 @@ class Node:
         """
         while True:
             to_remove = []
-            if len(self.to_backward) > 0:
-                print("sent_to_backward :", self.to_backward)
             for message in self.to_backward:
                 next_node = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 try:
                     next_node.connect((message[0][0], message[0][1]))
-                    print("Voilà le contrat")
                     next_node.send(tools.sign(message[1], self.private_key))
-                    print("C'est signé")
                 except ConnectionRefusedError:
                     # Means that a previous node disconnected, should be removed from the phonebook
                     self.connection_error_handler((message[0][0], message[0][1]))
@@ -322,13 +308,8 @@ class Node:
                     connection, address = ready_server.accept()
                     with connection:
                         message = connection.recv(2048)
-                        print(f"\nMessage received : {message}\n"
-                              f"At   : {self.address}\n"
-                              f"From : {address}")
-                        print(self.dict_socket_to_address[ready_server], self.address)
                         if self.dict_socket_to_address[ready_server] == self.address:
-                            print("Returned to sender")
-                            self.recv_buffer.append(tools.verify_sign(message, self.path))
+                            self.recv_buffer.append(tools.verify_sign_path(message, self.path))
                         else:
                             self.to_backward.append((self.dict_socket_to_address[ready_server], message))
 
