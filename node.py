@@ -25,13 +25,13 @@ starting_phonebook = {
 
 # Specific indexes to assign different ports for different purposes
 port_dictionary = {
-    "listening":    0,
+    # "listening":    0,
     "peering":      1,
-    "forwarding":   2,
-    "backwarding":  3,
-    "sending":      4,
+    # "forwarding":   2,
+    # "backwarding":  3,
+    # "sending":      4,
     "phonebook":    5,
-    "auth":         6,
+    # "auth":         6,
 }
 
 
@@ -62,6 +62,18 @@ class Node:
         threading.Thread(target=self.start_forwarding).start()
         threading.Thread(target=self.start_backwarding).start()
         threading.Thread(target=self.start_listening).start()
+
+    def become_exit_node(self):
+        """
+        Turn the node into an exit node
+        """
+        self.is_exit_node = True
+
+    def become_normal_node(self):
+        """
+        Turn the node into a non exit node
+        """
+        self.is_exit_node = False
 
     def init_phonebook(self):
         """

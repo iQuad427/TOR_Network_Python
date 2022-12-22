@@ -23,7 +23,6 @@ authentication_server = ("127.0.0.5", 10000)
 
 # username : log, password
 user_credentials = dict()
-public_key, private_key = rsa.newkeys(1024)
 
 
 def verif_challenge(username, user_response):
@@ -48,6 +47,9 @@ def format_challenge(username, to_encode=True):
 
 
 if __name__ == '__main__':
+    public_key, private_key = rsa.newkeys(1024)
+
+    # Open a socket
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.bind(authentication_server)
     sock.listen()
@@ -70,7 +72,7 @@ if __name__ == '__main__':
 
         verified_user = False
         if user in user_credentials and type(user_credentials[user][PUBLIC_KEY_INDEX]) is rsa.PublicKey:
-            client_public_key = user_credentials [user][PUBLIC_KEY_INDEX]
+            client_public_key = user_credentials[user][PUBLIC_KEY_INDEX]
             try:
                 verified_user = (rsa.verify(raw_message, signature, client_public_key) == 'SHA-256')
             except rsa.VerificationError:
