@@ -68,6 +68,18 @@ class Node:
         self.dict_address_to_portsocket.clear()
         self.dict_socket_to_address.clear()
 
+    def become_exit_node(self):
+        """
+        Turn the node into an exit node
+        """
+        self.is_exit_node = True
+
+    def become_normal_node(self):
+        """
+        Turn the node into a non exit node
+        """
+        self.is_exit_node = False
+
     def init_phonebook(self):
         """
         Init the phonebook with correct addresses and corresponding (public_key, is_exit_node) by

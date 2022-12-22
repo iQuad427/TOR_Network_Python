@@ -22,7 +22,6 @@ authentication_server = ("127.0.0.5", 10000)
 
 # username : log, password
 user_credentials = dict()
-public_key, private_key = rsa.newkeys(1024)
 
 
 def verif_challenge(username, user_response):
@@ -47,6 +46,9 @@ def format_challenge(username, to_encode=True):
 
 
 def launch_server():
+    public_key, private_key = rsa.newkeys(1024)
+
+    # Open a socket
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.bind(authentication_server)
     sock.listen()
