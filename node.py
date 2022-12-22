@@ -111,6 +111,8 @@ class Node:
         :return:
         """
         if not self.path:
+            if len(self.phonebook.get_contact_list()) < PATH_LENGTH:
+                self.update_phonebook(self.phonebook.contact_list)
             self.path = self.phonebook.define_path(PATH_LENGTH)
 
     def update_address_socket_mapping(self, address):

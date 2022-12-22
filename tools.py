@@ -167,7 +167,7 @@ def send_encrypted_packet(self, packet, public_key):
     the corresponding public keys and sends it to the first node.
     :return:
     """
-    self.define_path()
+    self.set_path()
     packet = bytes(packet, 'utf-8')
     encrypted_packet = encrypt(packet, public_key)
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
