@@ -42,12 +42,12 @@ python3 main.py
 ### Address already in use
 
 When you want to initialize a node on an already used address some troubles
-appear, its is therefore recommended to check if the ip address is available.
-If some port are already used you can directly change them in "the main.py" file 
-or even change the kernel node in the "node.py" file.
+appear, its is therefore recommended checking if the IP address is available.
+If some ports are already used you can directly change them in the "main.py" file 
+or even change the kernel node ones in the "node.py" file.
 
 It is also recommended when a launching error occur to wait a bit so that the
-socket have the time to shut down.
+socket have the time to shut down by themselves.
 
 > Note : on MACOS you have to first allow the connection on your different local
 > IP address by using the following command ```sudo ifconfig lo0 alias 127.0.0.X up```
