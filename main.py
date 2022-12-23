@@ -1,9 +1,11 @@
 from auth_node import AuthenticationNode
+from node import Node
 
 PORT = 60000
 
 
 if __name__ == '__main__':
+
     auth_node = AuthenticationNode(("127.0.0.5", PORT), False)
     print("Starting the node")
     auth_node.start()
@@ -36,3 +38,6 @@ if __name__ == '__main__':
 
     auth_node.stop()
     second_node.stop()
+
+
+
