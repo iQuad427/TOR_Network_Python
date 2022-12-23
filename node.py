@@ -25,8 +25,7 @@ starting_phonebook = {
 
 # Specific indexes to assign different ports for different purposes
 port_dictionary = {
-    "listening":    0,
-    "peering":      1,
+    "peering": 1,
 }
 
 
@@ -41,9 +40,9 @@ class Node:
         self.path = list()
         self.free_port = STARTING_FREE_PORT
         self.backwarding_sockets = list()
-        self.dict_address_to_portsocket = dict()  # {(own_address[0], 4999): [4999]}
-        self.sockets = list()
+        self.dict_address_to_socket = dict()  # {(own_address[0], 4999): [4999]}
         self.dict_socket_to_address = dict()  # {4999: (own_address[0], 4999)}
+        self.sockets = list()
         self.to_backward = list()
         self.recv_buffer = list()
         self.thread_locked = False
@@ -65,7 +64,7 @@ class Node:
         self.thread_locked = True
 
         self.sockets.clear()
-        self.dict_address_to_portsocket.clear()
+        self.dict_address_to_socket.clear()
         self.dict_socket_to_address.clear()
 
     def become_exit_node(self):
@@ -107,24 +106,9 @@ class Node:
 
             self.phonebook.update_contact_list(new_phonebook)
 
-    def increment_port(self):
-        """
-        Increment the node's current free port by 1 and return the new value
-        If the new port exceeds the ending free port, reset the free port to the starting free port
-        :return:
-        """
-        new_port = self.free_port + 1
-        if new_port > ENDING_FREE_PORT:
-            self.free_port = STARTING_FREE_PORT
-        else:
-            self.free_port = new_port
-
-        return self.free_port
-
     def set_path(self):
         """
         If the path has not been set yet, add the first node in the exit set to the path
-        :return:
         """
         if not self.path:
             if len(self.phonebook.get_contact_list()) < PATH_LENGTH:
@@ -132,24 +116,24 @@ class Node:
                     self.update_phonebook(node)
             self.path = self.phonebook.define_path(PATH_LENGTH)
 
-    def update_address_socket_mapping(self, address):
+    def update_address_socket_mapping(self, previous_address, self_address):
         """
         Update the mapping of addresses to sockets and sockets to addresses for the node.
         This function creates a socket that listens on a specific port and adds it to the list of sockets
         that the node listens to for incoming messages.
-        :param address: tuple containing the IP address and port of the node we want to update the mapping for
+        :param previous_address:
+        :param self_address:
         """
-        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        server.bind((self.address[0], self.free_port))
-        server.listen(1)
-        self.sockets.append(server)
-        # Saving the port from which we send the onion
-        self.dict_address_to_portsocket[address] = [self.free_port]
-        # Creating a socket and add it to listening_backward loop
-        self.dict_address_to_portsocket[address].append(server)
+        socket_to_previous_node = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        socket_to_previous_node.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        socket_to_previous_node.bind(self_address)
+        socket_to_previous_node.listen(1)
+
+        self.sockets.append(socket_to_previous_node)
+        # Saving the port from which we sent the onion + creating a socket and add it to listening_backward loop
+        self.dict_address_to_socket[previous_address] = [self_address, socket_to_previous_node]
         # Adding the address to which the socket will backward the received onions
-        self.dict_socket_to_address[server] = address
+        self.dict_socket_to_address[socket_to_previous_node] = previous_address
 
     def send(self, message):
         """
@@ -162,18 +146,18 @@ class Node:
 
         # Sending to the next node the onion
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        sock.bind((self.address[0], self.free_port))
         try:
             sock.connect((next_address[0], next_address[1] + port_dictionary["peering"]))
             sock.send(onion)
         except ConnectionRefusedError:
             # Means that the first node in the path, should be removed from the phonebook
             self.connection_error_handler(next_address)
+
+        address_used_to_forward = sock.getsockname()
         sock.close()
 
-        self.update_address_socket_mapping(self.address)
-        self.increment_port()
+        # Give self.address as previous node to stop the sender forwarding loop when receiving its packet back
+        self.update_address_socket_mapping(self.address, address_used_to_forward)
 
     def recv(self, timeout, delay=0.1):
         elapsed = 0
@@ -187,14 +171,14 @@ class Node:
         return response
 
     def get_listening_socket(self):
-        if self.listening_socket is not None:
-            return self.listening_socket
-        else:
+        if self.listening_socket is None:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             sock.bind(self.address)
             sock.settimeout(1)
             self.listening_socket = sock
+        else:
+            return self.listening_socket
 
         return sock
 
@@ -216,14 +200,14 @@ class Node:
                 pass
 
     def get_forwarding_socket(self):
-        if self.forwarding_socket is not None:
-            return self.forwarding_socket
-        else:
+        if self.forwarding_socket is None:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             sock.bind((self.address[0], self.address[1] + port_dictionary["peering"]))
             sock.settimeout(1)
             self.forwarding_socket = sock
+        else:
+            return self.forwarding_socket
 
         return sock
 
@@ -237,11 +221,11 @@ class Node:
             except socket.timeout:
                 pass
 
-    def forwarding(self, previous_node, address):
+    def forwarding(self, previous_node, previous_node_address):
         """
         Forward a message received from a previous node in the onion routing path
+        :param previous_node_address: tuple containing the IP address and port of the previous node
         :param previous_node: socket connected to the previous node in the path
-        :param address: tuple containing the IP address and port of the previous node
         """
         while not self.thread_locked:
             # Receive a message (could be longer than 2048, need to concat)
@@ -264,8 +248,6 @@ class Node:
 
             # Create a socket to send the message to the next node
             next_node = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            next_node.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            next_node.bind((self.address[0], self.free_port))
 
             if onion[:5] == b'send:':
                 if not self.is_exit_node:
@@ -277,7 +259,7 @@ class Node:
                     next_node.send(onion[5:])
                 except ConnectionRefusedError:
                     # Means that the previous node disconnected, should be removed from the phonebook
-                    self.connection_error_handler(address)
+                    self.connection_error_handler(previous_node_address)
 
                 message = b''
                 while True:
@@ -289,14 +271,13 @@ class Node:
                 # Create a socket to send back the answer to the previous node in the path
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 try:
-                    sock.connect(address)
+                    sock.connect(previous_node_address)
                     sock.send(message)
                 except ConnectionRefusedError:
                     # Means that the previous node disconnected, should be removed from the phonebook
-                    self.connection_error_handler(address)
+                    self.connection_error_handler(previous_node_address)
 
                 sock.close()
-
             else:
                 # Sending the onion the next node
                 try:
@@ -306,11 +287,11 @@ class Node:
                     # Means that the next node disconnected, should be removed from the phonebook
                     self.connection_error_handler(next_address)
 
+            address_used_to_forward = next_node.getsockname()
             next_node.close()
             # Create a listening socket to listen for possible responses from the next node
-            if address not in self.dict_address_to_portsocket.keys():
-                self.update_address_socket_mapping(address)
-                self.increment_port()
+            if previous_node_address not in self.dict_address_to_socket.keys():
+                self.update_address_socket_mapping(previous_node_address, address_used_to_forward)
             return
 
     def start_backwarding(self):

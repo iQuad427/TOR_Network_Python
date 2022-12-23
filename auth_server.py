@@ -1,8 +1,10 @@
 import pickle
 import socket
 import rsa
+import time
 from Crypto.Cipher import AES
 import tools
+from tools import BColors
 
 # Topology of received messages : username:#request:code
 
@@ -46,15 +48,23 @@ def format_challenge(username, to_encode=True):
 
 
 def launch_server():
+    print(f"{BColors.WARNING}{BColors.BOLD}Starting Authentication Server...{BColors.ENDC}")
     public_key, private_key = rsa.newkeys(1024)
 
     # Open a socket
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.bind(authentication_server)
-    sock.listen()
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.bind(authentication_server)
+        sock.listen()
+    except OSError:
+        print(f"{BColors.FAIL}Failed to launch the server, wait a moment and try again{BColors.ENDC}")
+        return 1
 
+    print(f"{BColors.OKGREEN}Launch successful{BColors.ENDC}")
+    print(f"{BColors.BOLD}{BColors.UNDERLINE}Server Logs{BColors.ENDC} :")
     while True:
         conn, addr = sock.accept()
+        timestamp = time.strftime("%H:%M:%S", time.localtime())
 
         message = conn.recv(2048)
 
@@ -78,55 +88,74 @@ def launch_server():
                 verified_user = False
 
         if user is None:
-            conn.send(tools.format_message("server", "log", "Error : Message badly formed"))
+            conn.send(tools.format_message("server", "log", "Error : Message badly formed", private_key=private_key))
 
         if query == "public_key":
-            conn.send(pickle.dumps(public_key))
+            conn.send(
+                tools.format_message("server", "public_key", public_key, encoding=2)
+            )
+            print(f"[{timestamp}]: Sent server public key to {user}")
 
         elif query == "sign_up":
             if user not in user_credentials:
                 user_credentials[user] = [0] * LEN_USER_INFO
                 user_credentials[user][PASSWORD_INDEX] = content
-                conn.send(tools.format_message("server", "log", "Log : sign up succeeded"))
+                conn.send(tools.format_message("server", "log", "Log : sign up succeeded", private_key=private_key))
+                print(f"[{timestamp}]: \"{user}\" signed up")
             else:
-                conn.send(tools.format_message("server", "log", "Error : sign up failed"))
+                conn.send(tools.format_message("server", "log", "Error : sign up failed", private_key=private_key))
+                print(f"[{timestamp}]: \"{user}\" failed to sign up")
 
         elif query == "sign_in":
             if user in user_credentials:
                 user_credentials[user][STATUS_INDEX] = SIGNING_IN
                 user_credentials[user][PUBLIC_KEY_INDEX] = content
                 user_credentials[user][COUNTER_INDEX] += 1
-                conn.send(tools.format_message("server", "challenge", format_challenge(user, False)))
+                conn.send(
+                    tools.format_message("server", "challenge", format_challenge(user, False), private_key=private_key)
+                )
+                print(f"[{timestamp}]: sent a challenge to \"{user}\"")
             else:
-                conn.send(tools.format_message("server", "log", "Error : sign in aborted"))
+                conn.send(tools.format_message("server", "log", "Error : sign in aborted", private_key=private_key))
+                print(f"[{timestamp}]: log in of \"{user}\" was aborted")
 
         elif query == "challenge":
             if user in user_credentials and user_credentials[user][STATUS_INDEX] == SIGNING_IN:
                 if verif_challenge(user, content):
                     user_credentials[user][STATUS_INDEX] = CONNECTED
                     conn.send(tools.encrypt(
-                        tools.format_message("server", "log", "Log : authentication succeeded"),
+                        tools.format_message("server", "log", "Log : authentication succeeded", private_key=private_key),
                         user_credentials[user][PUBLIC_KEY_INDEX])
                     )
+                    print(f"[{timestamp}]: \"{user}\" as logged in successfully")
                 else:
-                    conn.send(tools.format_message("server", "log", "Error : authentication failed"))
+                    conn.send(
+                        tools.format_message("server", "log", "Error : authentication failed", private_key=private_key)
+                    )
+                    print(f"[{timestamp}]: \"{user}\" failed to log in")
 
         elif query == "do_stuff":
             if user in user_credentials and user_credentials[user][STATUS_INDEX] == CONNECTED and verified_user:
                 conn.send(tools.encrypt(
-                    tools.format_message("server", "log", "We are doing stuff together"),
+                    tools.format_message("server", "log", "We are doing stuff together", private_key=private_key),
                     user_credentials[user][PUBLIC_KEY_INDEX])
                 )
+                print(f"[{timestamp}]: \"{user}\" is playing with the server")
             else:
-                conn.send(tools.format_message("server", "log", "I won't do stuff with you"))
+                conn.send(tools.format_message("server", "log", "I won't do stuff with you", private_key=private_key))
+                print(f"[{timestamp}]: server refused to play with \"{user}\"")
 
         elif query == "disconnect":
             if user_credentials[user][STATUS_INDEX] == CONNECTED and verified_user:
                 user_credentials[user][STATUS_INDEX] = DISCONNECTED
-                conn.send(tools.format_message("server", "log", "Log : disconnected from server"))
+                conn.send(
+                    tools.format_message("server", "log", "Log : disconnected from server", private_key=private_key)
+                )
+                print(f"[{timestamp}]: \"{user}\" disconnected from server")
             else:
                 if not verified_user:
-                    conn.send(tools.format_message("server", "log", "Error : access denied"))
+                    conn.send(tools.format_message("server", "log", "Error : access denied", private_key=private_key))
+                    print(f"[{timestamp}]: access was denied to \"{user}\"")
 
         conn.close()
 

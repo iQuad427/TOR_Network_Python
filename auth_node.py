@@ -41,7 +41,12 @@ class AuthenticationNode(node.Node):
         self.send(tools.format_send_to(authentication_server, formatted))
         response = self.recv(TIME_OUT)
 
-        return pickle.loads(response) if response is not None else None
+        if response is None:
+            return None
+
+        _, _, response, _, _ = tools.parsing(response)
+
+        return response
 
     def sign_up(self, username, password):
         """

@@ -1,12 +1,5 @@
-import socket
-import time
-
-import rsa
-
-import auth_server
+import threading
 import node
-import tools
-from auth_node import AuthenticationNode
 
 starting_nodes = [("127.0.0.1", 4000), ("127.0.0.2", 4000), ("127.0.0.3", 4000), ("127.0.0.4", 4000)]
 
@@ -119,6 +112,22 @@ def test_forwarding():
                "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
                "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
                .encode())
+
+
+def test_scalability():
+    network_nodes = [node.Node(("127.0.0.1", 5000 + i), False) for i in range(10)]
+
+    class Thread(threading.Thread):
+        def __init__(self, server_node):
+            threading.Thread.__init__(self)
+            self.server_node = server_node
+            self.daemon = True
+            self.start()
+
+        def run(self):
+            self.server_node.start()
+
+    threads = [Thread(server_node) for server_node in network_nodes]
 
 
 if __name__ == '__main__':
