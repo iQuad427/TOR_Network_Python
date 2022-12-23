@@ -31,7 +31,9 @@ through a challenge-response process to the server launched at step 2.
 ```
 python3 main.py
 ```
-
+>note: for each new node and to ensure the scalability it is recommended that
+> each node update its phonebook regularly by asking other nodes so that the
+> kernel node are not overused.
 ## Troubleshooting
 
 ### Address already in use
