@@ -192,18 +192,18 @@ def peel_address(onion, private_key=None):
     return next_address, next_onion
 
 
-def request_key(address):
+def request_from_node(address, request):
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
             sock.connect(address)
 
-            sock.send(pickle.dumps("public_key"))
-            new_public_key = sock.recv(2048)
-            new_public_key = pickle.loads(new_public_key)
-    except socket.error:
-        return 1
+            sock.send(pickle.dumps(request))
+            res = sock.recv(4096)
+            res = pickle.loads(res)
+    except ConnectionRefusedError:
+        return None
 
-    return new_public_key
+    return res
 
 
 def sign(packet, private_key):

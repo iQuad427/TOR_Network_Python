@@ -10,17 +10,20 @@ import tools
 from phonebook import Phonebook
 
 PATH_LENGTH = 3     # The maximum number of nodes in the communication path
+DEL_PATH_ON_BACKWARD = True
 
 # The range of free ports that can be assigned to sockets
 STARTING_FREE_PORT = 8000
 ENDING_FREE_PORT = 64000
 
+PORT = 4100
+
 # Initial dictionary containing initial addresses as keys and (public_key, is_exit_node) as values
 starting_phonebook = {
-    ("127.0.0.1", 4000): ["west_node", True],
-    ("127.0.0.2", 4000): ["north_node", False],
-    ("127.0.0.3", 4000): ["east_node", False],
-    ("127.0.0.4", 4000): ["south_node", False],
+    ("127.0.0.1", PORT): ["west_node", True],
+    ("127.0.0.2", PORT): ["north_node", False],
+    ("127.0.0.3", PORT): ["east_node", False],
+    ("127.0.0.4", PORT): ["south_node", False],
 }
 
 # Specific indexes to assign different ports for different purposes
@@ -33,9 +36,8 @@ class Node:
     def __init__(self, own_address, is_exit_node):
         self.address = (own_address[0], own_address[1])
         self.public_key, self.private_key = rsa.newkeys(1024)
-        self.phonebook = Phonebook()
-        self.init_phonebook()
         self.is_exit_node = is_exit_node
+        self.phonebook = Phonebook()
         self.exit = set()
         self.path = list()
         self.free_port = STARTING_FREE_PORT
@@ -46,8 +48,8 @@ class Node:
         self.to_backward = list()
         self.recv_buffer = list()
         self.thread_locked = False
-        self.listening_socket = None
         self.forwarding_socket = None
+        self.listening_socket = None
 
     def start(self):
         """
@@ -56,9 +58,10 @@ class Node:
         Starts the backwarding loop to backward incoming messages from a next node
         """
         self.thread_locked = False
+        threading.Thread(target=self.start_listening).start()
         threading.Thread(target=self.start_forwarding).start()
         threading.Thread(target=self.start_backwarding).start()
-        threading.Thread(target=self.start_listening).start()
+        self.init_phonebook()
 
     def stop(self):
         self.thread_locked = True
@@ -83,11 +86,9 @@ class Node:
         """
         Init the phonebook with correct addresses and corresponding (public_key, is_exit_node) by
         sending requests to the addresses in the starting_phonebook
-        :return:
         """
-        list_of_contact = copy.deepcopy(starting_phonebook)
-        self.phonebook.update_contact_list(list_of_contact)
-        self.phonebook.complete_contacts([contact for contact in list_of_contact])
+        self.phonebook = Phonebook(copy.deepcopy(starting_phonebook))
+        self.phonebook.complete_contacts()
 
     def update_phonebook(self, address):
         """
@@ -97,13 +98,8 @@ class Node:
         if address not in self.phonebook.get_contacts():
             raise PermissionError("Node not in phonebook")
 
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            sock.connect(address)
-
-            sock.send(pickle.dumps("phonebook"))
-            new_phonebook = sock.recv(2048)
-            new_phonebook = pickle.loads(new_phonebook)
-
+        new_phonebook = tools.request_from_node(address, "phonebook")
+        if new_phonebook is not None:
             self.phonebook.update_contact_list(new_phonebook)
 
     def set_path(self):
@@ -173,7 +169,6 @@ class Node:
     def get_listening_socket(self):
         if self.listening_socket is None:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             sock.bind(self.address)
             sock.settimeout(1)
             self.listening_socket = sock
@@ -191,18 +186,29 @@ class Node:
                 connection, address = sock.accept()
                 with connection:
                     message = connection.recv(2048)
-                    message = pickle.loads(message)
+
+                    try:
+                        message = pickle.loads(message)
+                    except EOFError:
+                        message = ""
+
                     if message == "phonebook":
                         connection.send(pickle.dumps(self.phonebook.get_contact_list()))
                     elif message == "public_key":
                         connection.send(pickle.dumps(self.public_key))
+                    elif type(message) == rsa.PublicKey:
+                        self.phonebook.add_address(address, message)
+                        connection.send(pickle.dumps("added to network"))
+                    elif message == "exit_node":
+                        self.phonebook.remove_address(address)
+                        self.phonebook.add_address(address, message, is_exit_node=True)
+                        connection.send(pickle.dumps("became an exit node"))
             except socket.timeout:
                 pass
 
     def get_forwarding_socket(self):
         if self.forwarding_socket is None:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             sock.bind((self.address[0], self.address[1] + port_dictionary["peering"]))
             sock.settimeout(1)
             self.forwarding_socket = sock
@@ -338,6 +344,10 @@ class Node:
                             self.recv_buffer.append(tools.verify_sign_path(message, self.path))
                         else:
                             self.to_backward.append((self.dict_socket_to_address[ready_server], message))
+
+                    if DEL_PATH_ON_BACKWARD:
+                        self.dict_address_to_socket.pop(self.dict_socket_to_address[ready_server])
+                        self.dict_socket_to_address.pop(ready_server)
 
     def connection_error_handler(self, address):
         """

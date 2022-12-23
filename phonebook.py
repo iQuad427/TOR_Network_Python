@@ -9,8 +9,10 @@ contact_list_format = {
 
 
 class Phonebook:
-    def __init__(self):
-        self.contact_list = {}
+    def __init__(self, base_contact_list=None):
+        if base_contact_list is None:
+            base_contact_list = dict()
+        self.contact_list = base_contact_list
         self.exit_nodes = set()
 
     def get_contact_list(self):
@@ -54,16 +56,19 @@ class Phonebook:
         self.update_exit_nodes()
         return self.exit_nodes
 
-    def complete_contacts(self, addresses: list):
+    def complete_contacts(self, addresses=None):
+        if addresses is None:
+            addresses = [address for address in self.contact_list]
+
         for contact in addresses:
             if contact in self.contact_list:
                 if type(self.contact_list[contact][0]) is not rsa.PublicKey:
-                    public_key = tools.request_key(contact)
+                    public_key = tools.request_from_node(contact, "public_key")
                     if type(public_key) is rsa.PublicKey:
                         self.contact_list[contact][0] = public_key
-                    else:
+                    elif len(self.contact_list) > 3:
                         # Communication failed, suppose that node is offline, remove from phonebook
-                        del self.contact_list[contact]
+                        self.remove_address(contact)
 
     def define_path(self, path_length):
         # tuple in the path list : (("127.0.0.1", 4000), [public_key, is_exit])
@@ -88,3 +93,6 @@ class Phonebook:
 
     def remove_address(self, address):
         self.contact_list.pop(address)
+
+    def add_address(self, address, public_key, is_exit_node=False):
+        self.contact_list[address] = [public_key, is_exit_node]

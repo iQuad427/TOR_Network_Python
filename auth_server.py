@@ -22,7 +22,7 @@ CONNECTED = 2
 client_address = ("127.0.0.4", 4006)
 authentication_server = ("127.0.0.5", 10000)
 
-# username : log, password
+# username : status, counter, password, public_key
 user_credentials = dict()
 
 

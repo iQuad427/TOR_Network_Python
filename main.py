@@ -1,6 +1,6 @@
 from auth_node import AuthenticationNode
 
-PORT = 5000
+PORT = 60000
 
 
 if __name__ == '__main__':

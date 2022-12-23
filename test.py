@@ -1,5 +1,6 @@
 import threading
 import node
+from auth_node import AuthenticationNode
 
 starting_nodes = [("127.0.0.1", 4000), ("127.0.0.2", 4000), ("127.0.0.3", 4000), ("127.0.0.4", 4000)]
 
@@ -115,20 +116,30 @@ def test_forwarding():
 
 
 def test_scalability():
-    network_nodes = [node.Node(("127.0.0.1", 5000 + i), False) for i in range(10)]
+    network_nodes = [node.Node(("127.0.0.1", 5000 + i), False) for i in range(0, 10, 2)]
 
     class Thread(threading.Thread):
-        def __init__(self, server_node):
+        def __init__(self, network_node):
             threading.Thread.__init__(self)
-            self.server_node = server_node
+            self.network_node = network_node
             self.daemon = True
             self.start()
 
         def run(self):
-            self.server_node.start()
+            print("threading")
+            self.network_node.start()
 
-    threads = [Thread(server_node) for server_node in network_nodes]
+    # threads = [Thread(network_node) for network_node in network_nodes]
+    Thread(node.Node("127.0.0.1", 6000))
+
+    client = AuthenticationNode(("127.0.0.1", 20000), False)
+    client.start()
+
+    client.sign_up("Test_User", "Test_Password")
+    print([step for step in client.path])
+
+    client.stop()
 
 
 if __name__ == '__main__':
-    pass
+    test_scalability()
