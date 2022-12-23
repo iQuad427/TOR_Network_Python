@@ -58,6 +58,7 @@ def format_message(username, query, content, private_key=None, encoding=1):
 
 def decode_message(message, delim, decoding):
     content = message[delim[1] + 1:]
+    # If the content is encoded, decode the content based on the value of decoding
     if decoding:
         if decoding == 1:
             content = content.decode('utf-8')
@@ -105,17 +106,27 @@ def parsing(argv):
 
 
 def format_send_to(address, message):
+    """
+    Encode the address with utf-8 and prepend it to the message, separated by ':send:'
+    """
     return f"{address}:send:".encode('utf-8') + message
 
 
 def hash_password(password):
+    """
+    Return Hashed password with SHA256
+    """
     return hashlib.sha256(password.encode()).hexdigest().encode()[:32]
 
 
 def generate_onion(message, node_path):
+    # Create a deep copy of the node_path and reverse it
     packaging_order = copy.deepcopy(node_path)
     packaging_order.reverse()
+
     onion = [message]
+
+    # Iterate through the packaging_order and add the hop to the beginning of the onion
     for hop in packaging_order:
         onion.insert(0, hop[0])
 
@@ -193,13 +204,18 @@ def peel_address(onion, private_key=None):
 
 
 def request_from_node(address, request):
+    """
+    Try to connect to the node at the given address and send the request
+    """
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
             sock.connect(address)
-
+            # Send the request as a pickled object
             sock.send(pickle.dumps(request))
+            # Receive the response from the node and un-pickle it
             res = sock.recv(4096)
             res = pickle.loads(res)
+    # If the connection is refused, return None
     except ConnectionRefusedError:
         return None
 
@@ -207,14 +223,27 @@ def request_from_node(address, request):
 
 
 def sign(packet, private_key):
+    """
+    Sign using RSA private key and SHA256
+    """
     return rsa.sign(packet, private_key, 'SHA-256') + packet
 
 
 def verify_sign(packet, public_key):
+    """
+    Verify using RSA public key
+    """
     return rsa.verify(packet[128:], packet[:128], public_key)
 
 
 def verify_sign_path(packet, path):
+    """
+    Verify the signature on a packet as it travels through a path of nodes.
+    If any node's signature is invalid, return None. Otherwise, return the packet
+    with all the signatures stripped off.
+    :param packet: the packet with the signatures to verify
+    :param path: a list of tuples representing the nodes in the path.
+    """
     verified_packet = packet
     for node in path[:-1]:  # last of path is the exit node (no signature)
         if verify_sign(verified_packet, node[1][0]):
