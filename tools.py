@@ -57,8 +57,11 @@ def format_message(username, query, content, private_key=None, encoding=1):
 
 
 def decode_message(message, delim, decoding):
+    """
+    If the content is encoded, decode the content based on the value of decoding
+    :return: a tuple containing user, query, content each correctly decoded
+    """
     content = message[delim[1] + 1:]
-    # If the content is encoded, decode the content based on the value of decoding
     if decoding:
         if decoding == 1:
             content = content.decode('utf-8')

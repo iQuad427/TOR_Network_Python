@@ -10,7 +10,6 @@ def start_network():
     """
     Deploy the four kernel nodes of the TOR network
     """
-    # try:
     west_node = Node(starting_nodes[0], True)
     west_node.start()
 
@@ -22,9 +21,6 @@ def start_network():
 
     south_node = Node(starting_nodes[3], False)
     south_node.start()
-    # except OSError:
-    #     print(f"{BColors.FAIL}failed to start properly, wait a moment before trying again{BColors.ENDC}")
-    #     return 1
 
     print(f"{BColors.OKGREEN}Launch successful{BColors.ENDC}")
 

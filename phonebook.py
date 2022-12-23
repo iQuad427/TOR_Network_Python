@@ -43,6 +43,9 @@ class Phonebook:
         return self._contact_list[contact]
 
     def update_exit_nodes(self):
+        """
+        Updates the exit nodes list using the contact list
+        """
         new_exit_nodes = set()
         for contact in self._contact_list:
             if self._contact_list[contact][1]:
