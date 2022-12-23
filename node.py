@@ -64,6 +64,9 @@ class Node:
         self.init_phonebook()
 
     def stop(self):
+        """
+        Close all the thread by finishing their infinite while loop and clearing their sockets
+        """
         self.thread_locked = True
 
         self.sockets.clear()
@@ -156,6 +159,12 @@ class Node:
         self.update_address_socket_mapping(self.address, address_used_to_forward)
 
     def recv(self, timeout, delay=0.1):
+        """
+        Check the message receive and add them to a buffer that is sent
+        :param timeout: maximum duration allocated to receive a message
+        :param delay: delay between each reception
+        :return response: the buffer containing the message
+        """
         elapsed = 0
 
         response = None
@@ -167,6 +176,9 @@ class Node:
         return response
 
     def get_listening_socket(self):
+        """
+        Before opening a new socket we check if a socket was already opened in case we restart the node
+        """
         if self.listening_socket is None:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.bind(self.address)
@@ -178,6 +190,9 @@ class Node:
         return sock
 
     def start_listening(self):
+        """
+        Listen for all incoming message destined to the node such as phonebook update or public key request
+        """
         sock = self.get_listening_socket()
         sock.listen()
 
@@ -207,6 +222,9 @@ class Node:
                 pass
 
     def get_forwarding_socket(self):
+        """
+        Before opening a new socket we check if a socket was already opened in case we restart the node
+        """
         if self.forwarding_socket is None:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.bind((self.address[0], self.address[1] + port_dictionary["peering"]))
@@ -218,6 +236,9 @@ class Node:
         return sock
 
     def start_forwarding(self):
+        """
+        Listen to the incoming sockets and open a forward thread for each of them
+        """
         sock = self.get_forwarding_socket()
         sock.listen()
         while not self.thread_locked:
@@ -353,7 +374,6 @@ class Node:
         """
         Removes a non responding node from the phonebook
         :param address: Address of the non responding node
-        :return:
         """
         if address in self.phonebook.get_contacts():
             self.phonebook.remove_address(address)

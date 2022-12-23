@@ -16,12 +16,25 @@ class Phonebook:
         self.exit_nodes = set()
 
     def get_contact_list(self):
+        """
+        Return the contact list and so the contacts and all information about them
+        :return: contact_list
+        """
         return self.contact_list
 
     def get_contacts(self):
+        """
+        Return every contact in the contact list
+        :return: contacts
+        """
         return [contact for contact in self.contact_list]
 
     def get_contact(self, public_key):
+        """
+        Return the contact linked to a given public key
+        :param public_key:
+        :return: contact
+        """
         for contact in self.contact_list:
             if self.contact_list[contact][0] == public_key:
                 return contact
@@ -38,6 +51,10 @@ class Phonebook:
         self.exit_nodes = new_exit_nodes
 
     def update_contact_list(self, list_of_contact: dict):
+        """
+        Add new contacts to the actual contact list
+        :param list_of_contact: New list of contact
+        """
         new_contacts = []
         for new_contact in list_of_contact:
             if new_contact not in self.contact_list:
@@ -57,6 +74,10 @@ class Phonebook:
         return self.exit_nodes
 
     def complete_contacts(self, addresses=None):
+        """
+        Ask the public key linked to the contact list addresses
+        :param addresses:
+        """
         if addresses is None:
             addresses = [address for address in self.contact_list]
 
@@ -71,6 +92,11 @@ class Phonebook:
                         self.remove_address(contact)
 
     def define_path(self, path_length):
+        """
+        Define a path using the contact list
+        :param path_length:
+        :return: list_of_node
+        """
         # tuple in the path list : (("127.0.0.1", 4000), [public_key, is_exit])
         list_of_node = [(contact, self.get_info(contact)) for contact in self.get_contacts()]
         random.shuffle(list_of_node)
