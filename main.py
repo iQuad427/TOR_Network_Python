@@ -17,7 +17,6 @@ if __name__ == '__main__':
     malicious.start()
     malicious.disconnect("Quentin")
     malicious.stop()
-
     print("Logging in bis")
     auth_node.sign_in("Quentin", "azerty")
     print("Disconnecting")

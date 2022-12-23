@@ -21,16 +21,16 @@ class AuthenticationNode(node.Node):
         :param is_exit_node: Indicating whether the node is an exit node.
         """
         node.Node.__init__(self, address, is_exit_node)
-        self.server_public_key = None
-        self.client_public_key, self.client_private_key = rsa.newkeys(1024)
+        self._server_public_key = None
+        self._client_public_key, self._client_private_key = rsa.newkeys(1024)
 
     def start(self):
         """
         Starts the node and retrieves the server's public key.
         """
         node.Node.start(self)
-        while self.server_public_key is None:
-            self.server_public_key = self.ask_for_server_public_key()
+        while self._server_public_key is None:
+            self._server_public_key = self.ask_for_server_public_key()
 
     def ask_for_server_public_key(self):
         """
@@ -57,7 +57,7 @@ class AuthenticationNode(node.Node):
         password_hash = tools.hash_password(password)
         formatted = tools.format_message(username, "sign_up", password_hash, encoding=0)
         # Send the hashed password the authentication server
-        self.send(tools.format_send_to(authentication_server, tools.encrypt(formatted, self.server_public_key)))
+        self.send(tools.format_send_to(authentication_server, tools.encrypt(formatted, self._server_public_key)))
 
         server_response = self.recv(TIME_OUT)
 
@@ -77,8 +77,8 @@ class AuthenticationNode(node.Node):
         :return:
         """
 
-        formatted = tools.format_message(username, "sign_in", self.client_public_key, encoding=2)
-        self.send(tools.format_send_to(authentication_server, tools.encrypt(formatted, self.server_public_key)))
+        formatted = tools.format_message(username, "sign_in", self._client_public_key, encoding=2)
+        self.send(tools.format_send_to(authentication_server, tools.encrypt(formatted, self._server_public_key)))
 
         message = self.recv(TIME_OUT)
 
@@ -97,10 +97,10 @@ class AuthenticationNode(node.Node):
 
         formatted = tools.format_message(username, "challenge", actual, encoding=0)
         # Send the encrypted challenge to the authentication server
-        self.send(tools.format_send_to(authentication_server, tools.encrypt(formatted, self.server_public_key)))
+        self.send(tools.format_send_to(authentication_server, tools.encrypt(formatted, self._server_public_key)))
 
         server_response = self.recv(TIME_OUT)
-        server_response = tools.decrypt(server_response, self.client_private_key)
+        server_response = tools.decrypt(server_response, self._client_private_key)
 
         if server_response is None:
             return
@@ -115,8 +115,8 @@ class AuthenticationNode(node.Node):
         Disconnects the user with the given username.
         :param username: Username of the user.
         """
-        formatted = tools.format_message(username, "disconnect", "void", private_key=self.client_private_key, encoding=2)
-        self.send(tools.format_send_to(authentication_server, tools.encrypt(formatted, self.server_public_key)))
+        formatted = tools.format_message(username, "disconnect", "void", private_key=self._client_private_key, encoding=2)
+        self.send(tools.format_send_to(authentication_server, tools.encrypt(formatted, self._server_public_key)))
 
         server_response = self.recv(2048)
 

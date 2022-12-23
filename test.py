@@ -36,22 +36,22 @@ def test_phonebook():
         ("127.0.0.5", 4020): ["new node", False],
         ("127.0.0.5", 4030): ["new node", False],
     }
-    node0.phonebook.update_contact_list(contact_dict)
+    node0._phonebook.update_contact_list(contact_dict)
     node0.start()
 
     node1 = node.Node(("127.0.0.5", 4050), False)
     node1.start()
-    node1.phonebook.update_contact_list({("127.0.0.5", 4040): ["known node from before", False]})
+    node1._phonebook.update_contact_list({("127.0.0.5", 4040): ["known node from before", False]})
 
     node1.update_phonebook(("127.0.0.5", 4040))
-    node1.phonebook.complete_contacts(starting_nodes)
-    print(node1.phonebook)
+    node1._phonebook.complete_contacts(starting_nodes)
+    print(node1._phonebook)
 
 
 def test_forwarding():
     node0 = node.Node(("127.0.0.5", 4000), False)
     node0.start()
-    node0.phonebook.complete_contacts(starting_nodes)
+    node0._phonebook.complete_contacts(starting_nodes)
     node0.send("0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
                "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
                "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
@@ -136,7 +136,7 @@ def test_scalability():
     client.start()
 
     client.sign_up("Test_User", "Test_Password")
-    print([step for step in client.path])
+    print([step for step in client._path])
 
     client.stop()
 
