@@ -5,24 +5,8 @@ from auth_node import AuthenticationNode
 starting_nodes = [("127.0.0.1", 4000), ("127.0.0.2", 4000), ("127.0.0.3", 4000), ("127.0.0.4", 4000)]
 
 
-def start_network():
-    """
-    Deploy the four kernel nodes of the TOR network
-    """
-    west_node = node.Node(starting_nodes[0], True)
-    west_node.start()
-
-    north_node = node.Node(starting_nodes[1], False)
-    north_node.start()
-
-    east_node = node.Node(starting_nodes[2], False)
-    east_node.start()
-
-    south_node = node.Node(starting_nodes[3], False)
-    south_node.start()
-
-
 def test_phonebook():
+    print("Start Phonebook test")
     node.Node(("127.0.0.5", 4000), False).start()
     node.Node(("127.0.0.5", 4010), False).start()
     node.Node(("127.0.0.5", 4020), False).start()
@@ -46,10 +30,14 @@ def test_phonebook():
     node1.update_phonebook(("127.0.0.5", 4040))
     node1._phonebook.complete_contacts(starting_nodes)
     print(node1._phonebook)
+    node0.stop()
+    node1.stop()
+    print("Phonebook test successful")
 
 
 def test_forwarding():
-    node0 = node.Node(("127.0.0.5", 4000), False)
+    print("Start forwarding test")
+    node0 = node.Node(("127.0.0.27", 4000), False)
     node0.start()
     node0._phonebook.complete_contacts(starting_nodes)
     node0.send("0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
@@ -113,14 +101,24 @@ def test_forwarding():
                "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
                "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
                .encode())
+    node0.stop()
+    print("Forwarding test successful")
 
 
 def test_scalability():
-    for i in range(9000, 9500, 4):
-        third_node = node.Node(("127.0.0.7", i), False)
-        third_node.start()
-        print("started another node on address 127.0.0.7, port :", i, " ", third_node)
+    print("Start scalability test (can take a while)")
+    nodes = []
+    for i in range(9000, 9050, 4):
+        new_node = node.Node(("127.0.0.7", i), False)
+        new_node.start()
+        nodes.append(new_node)
+        print("started another node on address 127.0.0.7, port :", i, " ", new_node)
+    for item in nodes:
+        item.stop()
+    print("Scalability test successful")
 
 
 if __name__ == '__main__':
+    test_phonebook()
+    test_forwarding()
     test_scalability()
